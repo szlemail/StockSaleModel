@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import time
 
-from common.configs import Configs
+from common.old_configs import Configs
 
 
 class TushareClient(object):

@@ -1,23 +1,32 @@
-class Configs(object):
-    # windows path
-    TIGER_PRIVATE_KEY_WINDOWS = "G:\\project\\stock\\tiger\\rsa\\rsa_private_key.pem"
-    TUSHARE_TOKEN_PATH_WINDOWS = "G:\\project\\stock\\tushare\\token.txt"
-    QQ_CODE_PATH_WINDOWS = "G:\\project\\stock\\qqmail\\qqcode.txt"
+import configparser
+import logging
+import os
 
-    # linux path
-    TIGER_PRIVATE_KEY_LINUX = "/home/common/keys/tiger_rsa_private_key.pem"
-    TUSHARE_TOKEN_PATH_LINUX = "/home/common/keys/tushare.config"
-    QQ_CODE_PATH_LINUX = "/home/common/keys/qqcode.config"
-    REDIS_PATH_LINUX = "/home/common/keys/redis.config"
 
-    # 管理员邮件l
-    ADMIN_EMAIL = "szlemail@tom.com;szlemail@qq.com"
-    STOCK_INDEX_LIST = ['399001.SZ', '399006.SZ', '000001.SH']
+class Config(object):
+    def __init__(self):
+        conf = configparser.ConfigParser()
+        env = os.environ.get("ALGO_ENV")
+        print(f"env:{env}")
+        if env is None or env == "dev":
+            conf.read("conf/dev.ini")
+        elif env == "pro":
+            conf.read("conf/pro.ini")
+        elif env == "win":
+            conf.read("conf/win.int")
+        else:
+            raise EnvironmentError(f"{env} not support now!")
+        self.conf = conf
 
-    # 计算特征的进程个数
-    POOL_PROCESS = 15
-    GBM_JOB = POOL_PROCESS
+    def get(self, section, option, default=None):
+        if default is None:
+            return self.conf.get(section=section, option=option, raw=True)
+        else:
+            try:
+                return self.conf.get(section=section, option=option, raw=True)
+            except Exception as e:
+                logging.error(f" config not found: {type(e)}, {e}")
+                return default
 
-    # 调试 控制参数
-    DEBUG_MINI_DATA = False
-    DEBUG_MINI_DATA_STOCKS = 100
+
+config = Config()
