@@ -64,43 +64,49 @@ class BaseModel(object):
         return df
 
     @staticmethod
+    def transform(df, param):
+        df['day_vol'] = df.groupby(['trade_date'])['vol'].transform('sum')
+        df = df[(df.trade_date > BaseModel.years_before(param['years'])) & (df.day_vol > 0)].copy()
+        df['day_cummax'] = df.groupby(['trade_date'])['close'].transform('cummax')
+        df['sell'] = np.array(df['close'] >= df['day_cummax']).astype(np.int8)
+        index = 2
+        price_labels = np.arange(index, index + len(param['price_bounds']) - 1)
+        df['o'] = np.array(pd.cut(df['open'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        df['h'] = np.array(pd.cut(df['high'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        df['l'] = np.array(pd.cut(df['low'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        df['c'] = np.array(pd.cut(df['close'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        index = index + len(param['price_bounds'])
+
+        df['w'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.dayofweek
+        df['w'] = df['w'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 7
+        # month day
+        df['md'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.day
+        df['md'] = df['md'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 31
+        # month
+        df['m'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.month
+        df['m'] = df['m'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 12
+        vol_labels = np.arange(index, index + len(param['vol_bounds']) - 1)
+        df['v'] = np.array(pd.cut(df['vol'], param['vol_bounds'], labels=vol_labels)).astype(np.int16)
+        index = index + len(param['vol_bounds'])
+        df['t'] = np.array(pd.cut(df.trade_time.apply(lambda x: int("".join(x.split(" ")[1].split(":"))) / 100),
+                                  param['time_bounds'],
+                                  labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(np.int16)
+        index = index + len(param['time_bounds'])
+        df['s'] = df.ts_code.map(param['stock_code_mapping'])
+        df['s'] = index + df['s'].apply(lambda x: x + index)
+        df.fillna(0, inplace=True)
+        return df
+
+    @staticmethod
     def read_min_csv(filename, param):
         f32, i32, i64 = np.float32, np.int32, np.int64
         dytpes = {'open': f32, 'close': f32, 'high': f32, 'low': f32, 'vol': i64, 'amount': f32, 'trade_date': i32}
         try:
             df = pd.read_csv(f"{param['origin_min_data_path']}/{filename}", dtype=dytpes)
-            df['day_vol'] = df.groupby(['trade_date'])['vol'].transform('sum')
-            df = df[(df.trade_date > BaseModel.years_before(param['years'])) & (df.day_vol > 0)].copy()
-            df['day_cummax'] = df.groupby(['trade_date'])['close'].transform('cummax')
-            df['sell'] = np.array(df['close'] >= df['day_cummax']).astype(np.int8)
-            index = 1
-            df['w'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.dayofweek
-            df['w'] = df['w'].apply(lambda x: x + index).astype(np.int16)
-            index = index + 7
-            # month day
-            df['md'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.day
-            df['md'] = df['md'].apply(lambda x: x + index).astype(np.int16)
-            index = index + 31
-            # month
-            df['m'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.month
-            df['m'] = df['m'].apply(lambda x: x + index).astype(np.int16)
-            index = index + 12
-            price_labels = np.arange(index, index + len(param['price_bounds']) - 1)
-            df['o'] = np.array(pd.cut(df['open'], param['price_bounds'], labels=price_labels)).astype(np.int16)
-            df['h'] = np.array(pd.cut(df['high'], param['price_bounds'], labels=price_labels)).astype(np.int16)
-            df['l'] = np.array(pd.cut(df['low'], param['price_bounds'], labels=price_labels)).astype(np.int16)
-            df['c'] = np.array(pd.cut(df['close'], param['price_bounds'], labels=price_labels)).astype(np.int16)
-            index = index + len(param['price_bounds'])
-            vol_labels = np.arange(index, index + len(param['vol_bounds']) - 1)
-            df['v'] = np.array(pd.cut(df['vol'], param['vol_bounds'], labels=vol_labels)).astype(np.int16)
-            index = index + len(param['vol_bounds'])
-            df['t'] = np.array(pd.cut(df.trade_time.apply(lambda x: int("".join(x.split(" ")[1].split(":"))) / 100),
-                                      param['time_bounds'],
-                                      labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(np.int16)
-            index = index + len(param['time_bounds'])
-            df['s'] = df.ts_code.map(param['stock_code_mapping'])
-            df['s'] = index + df['s'].apply(lambda x: x + index)
-            df.fillna(0, inplace=True)
+            df = BaseModel.transform(df, param)
             return df
         except Exception as e:
             logging.error(f"read_min_csv:{filename} error {e}")
