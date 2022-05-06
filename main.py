@@ -22,10 +22,11 @@ if __name__ == '__main__':
     # 显示所有行
     pd.set_option('display.max_rows', 100)  # 最多显示10行
     transformer = Transformer()
-    transformer.load_data()
+    data = transformer.load_min_data(years=10)
+    data.head(3)
     transformer.build()
-    transformer.pre_train(epochs=1, workers=8)
-    transformer.train(epochs=1, workers=8)
+    transformer.pre_train(data, epochs=1, workers=8)
+    transformer.train(data, epochs=1, workers=8)
 
     # model.save("model")
 

@@ -68,7 +68,13 @@ class BaseModel(object):
         df['day_vol'] = df.groupby(['trade_date'])['vol'].transform('sum')
         df = df[(df.trade_date > BaseModel.years_before(param['years'])) & (df.day_vol > 0)].copy()
         df['day_cummax'] = df.groupby(['trade_date'])['close'].transform('cummax')
+        df['day_cummin'] = df.groupby(['trade_date'])['close'].transform('cummin')
+        df['day_close'] = df.groupby(['trade_date'])['close'].transform('first')
+        df['day_open'] = df.groupby(['trade_date'])['close'].transform('last')
+        df['day_min_close'] = df.groupby(['trade_date'])['close'].transform('min')
+        df['day_max_close'] = df.groupby(['trade_date'])['close'].transform('max')
         df['sell'] = np.array(df['close'] >= df['day_cummax']).astype(np.int8)
+        df['buy'] = np.array(df['close'] <= df['day_cummin']).astype(np.int8)
         index = 2
         price_labels = np.arange(index, index + len(param['price_bounds']) - 1)
         df['o'] = np.array(pd.cut(df['open'], param['price_bounds'], labels=price_labels)).astype(np.int16)
@@ -87,13 +93,18 @@ class BaseModel(object):
         # month
         df['m'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.month
         df['m'] = df['m'].apply(lambda x: x + index).astype(np.int16)
-        index = index + 12
-        vol_labels = np.arange(index, index + len(param['vol_bounds']) - 1)
+        index = index + 13
+        # vol
+        vol_labels = np.arange(index + 1, index + len(param['vol_bounds']))
         df['v'] = np.array(pd.cut(df['vol'], param['vol_bounds'], labels=vol_labels)).astype(np.int16)
-        index = index + len(param['vol_bounds'])
+        df['v'].fillna(index, inplace=True)
+        index = index + len(param['vol_bounds']) + 1
+
         df['t'] = np.array(pd.cut(df.trade_time.apply(lambda x: int("".join(x.split(" ")[1].split(":"))) / 100),
                                   param['time_bounds'],
                                   labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(np.int16)
+        df['close_t'] = df.groupby(['trade_date'])['t'].transform('first')
+        df['close_t'] = np.array(df['close_t'] == df['t']).astype(np.int8)
         index = index + len(param['time_bounds'])
         df['s'] = df.ts_code.map(param['stock_code_mapping'])
         df['s'] = index + df['s'].apply(lambda x: x + index)
