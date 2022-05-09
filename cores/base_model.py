@@ -54,28 +54,46 @@ class BaseModel(object):
         return bounds
 
     @timing
-    @exception
     def load_data(self, years=10):
-        stock_file_list = np.array([s for s in os.listdir(self.origin_data_path)])
+        stock_file_list = np.array(
+            [s for s in os.listdir(self.origin_data_path) if s.strip(".csv") not in self.stock_index_list])
         stock_file_list = stock_file_list[:self.debug_stock_count] if self.debug else stock_file_list
-        dfs = [pd.read_csv(f"{self.origin_data_path}/{filename}") for filename in stock_file_list]
-        df = pd.concat(dfs, axis=0)
-        df = df[df.trade_date > self.years_before(years)].copy()
+        param = {
+            "price_bounds": self.price_bounds,
+            "vol_bounds": self.vol_bounds,
+            "time_bounds": self.time_bounds,
+            "stock_code_mapping": self.stock_code_mapping,
+            "origin_data_path": self.origin_data_path,
+            "years": years,
+            "is_min": False
+        }
+        with Pool(17) as p:
+            dfs = p.map(partial(BaseModel.read_csv, param=param), stock_file_list)
+        return pd.concat(dfs, axis=0)
+
+    @staticmethod
+    def read_csv(filename, param):
+        f32, i32, i64 = np.float32, np.int32, np.int64
+        dytpes = {'open': f32, 'close': f32, 'high': f32, 'low': f32, 'vol': f32, 'amount': f32, 'trade_date': i32,
+                  'ts_code': str}
+        try:
+            df = pd.read_csv(f"{param['origin_data_path']}/{filename}", dtype=dytpes, usecols=list(dytpes.keys()))
+            df = BaseModel.transform_day(df, param)
+            return df
+        except Exception as e:
+            logging.error(f"read_csv:{filename} error {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def transform_day(df, param):
+        df['day_vol'] = df.groupby(['trade_date'])['vol'].transform('sum')
+        df = df[(df.trade_date > BaseModel.years_before(param['years'])) & (df.day_vol > 0)].copy()
+        df = BaseModel.transform_feature(df, param)
         return df
 
     @staticmethod
-    def transform(df, param):
-        df['day_vol'] = df.groupby(['trade_date'])['vol'].transform('sum')
-        df = df[(df.trade_date > BaseModel.years_before(param['years'])) & (df.day_vol > 0)].copy()
-        df['day_cummax'] = df.groupby(['trade_date'])['close'].transform('cummax')
-        df['day_cummin'] = df.groupby(['trade_date'])['close'].transform('cummin')
-        df['day_close'] = df.groupby(['trade_date'])['close'].transform('first')
-        df['day_open'] = df.groupby(['trade_date'])['close'].transform('last')
-        df['day_min_close'] = df.groupby(['trade_date'])['close'].transform('min')
-        df['day_max_close'] = df.groupby(['trade_date'])['close'].transform('max')
-        df['sell'] = np.array(df['close'] >= df['day_cummax']).astype(np.int8)
-        df['buy'] = np.array(df['close'] <= df['day_cummin']).astype(np.int8)
-        index = 2
+    def transform_feature(df, param):
+        index = 3  # 1 MASK, 2:SEP
         price_labels = np.arange(index, index + len(param['price_bounds']) - 1)
         df['o'] = np.array(pd.cut(df['open'], param['price_bounds'], labels=price_labels)).astype(np.int16)
         df['h'] = np.array(pd.cut(df['high'], param['price_bounds'], labels=price_labels)).astype(np.int16)
@@ -100,28 +118,18 @@ class BaseModel(object):
         df['v'].fillna(index, inplace=True)
         index = index + len(param['vol_bounds']) + 1
 
-        df['t'] = np.array(pd.cut(df.trade_time.apply(lambda x: int("".join(x.split(" ")[1].split(":"))) / 100),
-                                  param['time_bounds'],
-                                  labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(np.int16)
-        df['close_t'] = df.groupby(['trade_date'])['t'].transform('first')
-        df['close_t'] = np.array(df['close_t'] == df['t']).astype(np.int8)
+        if param['is_min']:
+            df['t'] = np.array(pd.cut(df.trade_time.apply(lambda x: int("".join(x.split(" ")[1].split(":"))) / 100),
+                                      param['time_bounds'],
+                                      labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(np.int16)
+        else:
+
+            df['t'] = index + len(param['time_bounds']) - 1
         index = index + len(param['time_bounds'])
         df['s'] = df.ts_code.map(param['stock_code_mapping'])
         df['s'] = index + df['s'].apply(lambda x: x + index)
         df.fillna(0, inplace=True)
         return df
-
-    @staticmethod
-    def read_min_csv(filename, param):
-        f32, i32, i64 = np.float32, np.int32, np.int64
-        dytpes = {'open': f32, 'close': f32, 'high': f32, 'low': f32, 'vol': i64, 'amount': f32, 'trade_date': i32}
-        try:
-            df = pd.read_csv(f"{param['origin_min_data_path']}/{filename}", dtype=dytpes)
-            df = BaseModel.transform(df, param)
-            return df
-        except Exception as e:
-            logging.error(f"read_min_csv:{filename} error {e}")
-        return pd.DataFrame()
 
     @timing
     def load_min_data(self, years):
@@ -134,11 +142,44 @@ class BaseModel(object):
             "time_bounds": self.time_bounds,
             "stock_code_mapping": self.stock_code_mapping,
             "origin_min_data_path": self.origin_min_data_path,
-            "years": years
+            "years": years,
+            "is_min": True
         }
         with Pool(17) as p:
             dfs = p.map(partial(BaseModel.read_min_csv, param=param), stock_file_list)
         return pd.concat(dfs, axis=0)
+
+    @staticmethod
+    def transform_min(df, param):
+        if 'trade_date' not in df.columns.values:
+            df['trade_date'] = df['trade_time'].apply(lambda x: int("".join(x.split(" ")[0].split("-"))))
+        df['day_vol'] = df.groupby(['trade_date'])['vol'].transform('sum')
+        df = df[(df.trade_date > BaseModel.years_before(param['years'])) & (df.day_vol > 0)].copy()
+        df['day_cummax'] = df.groupby(['trade_date'])['close'].transform('cummax')
+        df['day_cummin'] = df.groupby(['trade_date'])['close'].transform('cummin')
+        df['day_close'] = df.groupby(['trade_date'])['close'].transform('first')
+        df['day_open'] = df.groupby(['trade_date'])['close'].transform('last')
+        df['day_pre_close'] = df.groupby(['trade_date'])['pre_close'].transform('last')
+        df['day_min_close'] = df.groupby(['trade_date'])['close'].transform('min')
+        df['day_max_close'] = df.groupby(['trade_date'])['close'].transform('max')
+        df['sell'] = np.array(df['close'] >= df['day_cummax']).astype(np.int8)
+        df['buy'] = np.array(df['close'] <= df['day_cummin']).astype(np.int8)
+        df = BaseModel.transform_feature(df, param)
+        df['close_t'] = df.groupby(['trade_date'])['t'].transform('first')
+        df['close_t'] = np.array(df['close_t'] == df['t']).astype(np.int8)
+        return df
+
+    @staticmethod
+    def read_min_csv(filename, param):
+        f32, i32, i64 = np.float32, np.int32, np.int64
+        dytpes = {'open': f32, 'close': f32, 'high': f32, 'low': f32, 'vol': i64, 'amount': f32, 'trade_date': i32}
+        try:
+            df = pd.read_csv(f"{param['origin_min_data_path']}/{filename}", dtype=dytpes)
+            df = BaseModel.transform_min(df, param)
+            return df
+        except Exception as e:
+            logging.error(f"read_min_csv:{filename} error {e}")
+        return pd.DataFrame()
 
     @abstractmethod
     def make_model(self, seq_len, embedding_size):
@@ -161,4 +202,4 @@ class BaseModel(object):
     def get_steps(self, tdf):
         size = len(tdf)
         stock_count = len(np.unique(tdf.ts_code))
-        return int((size - stock_count * self.seq_len) / self.batch_size)
+        return int((size - stock_count * (self.seq_len * 10 + 18)) / self.batch_size)

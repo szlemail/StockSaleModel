@@ -1,3 +1,4 @@
+import gc
 import random
 from datetime import datetime, timedelta
 import tensorflow as tf
@@ -98,11 +99,11 @@ class Transformer(BaseModel):
         pre_model.summary()
         return model, pre_model
 
-    def batch_feature_generator(self, tdf, last_only=False):
+    def batch_feature_generator(self, tdf_min, tdf, last_only=False):
         if self.is_pre_train:
             f0, f1, l0, l1, l2, l3 = [], [], [], [], [], []
             while True:
-                for f, l in self.feature_generator(tdf, self.seq_len):
+                for f, l in self.feature_generator(tdf_min, tdf, self.seq_len):
                     f0.append(f[0])
                     f1.append(f[1])
                     l0.append(l[0])
@@ -115,7 +116,7 @@ class Transformer(BaseModel):
         else:
             features, l0, l1, l2, l3, l4, l5, l6 = [], [], [], [], [], [], [], []
             while True:
-                for f, l in self.feature_generator(tdf, self.seq_len, last_only):
+                for f, l in self.feature_generator(tdf_min, tdf, self.seq_len, last_only):
                     features.append(f)
                     l0.append(l[0])
                     l1.append(l[1])
@@ -129,7 +130,7 @@ class Transformer(BaseModel):
                                                    np.array(l5), np.array(l6)]
                         features, l0, l1, l2, l3, l4, l5, l6 = [], [], [], [], [], [], [], []
 
-    def feature_generator(self, df, seq_len, last_only=False):
+    def feature_generator(self, df_min, df, seq_len, last_only=False):
         """
         price: max:2589.0 min:0.6700000166893005
         vol: max:1946133833 min:1
@@ -137,19 +138,25 @@ class Transformer(BaseModel):
         :param seq_len 序列长度
         :return:
         """
-        cols = "o,h,l,c,v,t,md,w,m,s,sell,buy,close_t,day_open,day_close,day_min_close,day_max_close".split(",")
+        min_cols = "o,h,l,c,v,t,md,w,m,s,sell,buy,close_t,day_open,day_close,day_pre_close,day_min_close,day_max_close,trade_date".split(
+            ",")
+        cols = "o,h,l,c,v,t,md,w,m,s,trade_date".split(",")
         feature_col = "o,h,l,c,v,t,md,w,m,s".split(",")
         O, H, L, C, V, T, MD, W, M, S = range(len(feature_col))
-        label_col = "sell,buy,close_t,day_open,day_close,day_min_close,day_max_close".split(",")
-        SELL, BUY, CLOSE_T, DAY_OPEN, DAY_CLOSE, DAY_MIN_CLOSE, DAY_MAX_CLOSE = range(len(label_col))
-        for ts_code in np.unique(df.ts_code):
-            tdf = df[df.ts_code == ts_code].sort_values(by='trade_time')[cols]
-            feature = tdf[feature_col].values
-            label = tdf[label_col].values
-            size = len(feature) - seq_len - 18
-            for start in range(size):
+        label_col = "sell,buy,close_t,day_open,day_close,day_pre_close,day_min_close,day_max_close".split(",")
+        SELL, BUY, CLOSE_T, DAY_OPEN, DAY_CLOSE, DAY_PRE_CLOSE, DAY_MIN_CLOSE, DAY_MAX_CLOSE = range(len(label_col))
+        for ts_code in np.unique(df_min.ts_code):
+            tdf_min = df_min[df_min.ts_code == ts_code].sort_values(by='trade_time')[min_cols].copy()
+            tdf_day = df[df.ts_code == ts_code].sort_values(by='trade_date')[cols].copy()
+            if len(tdf_day) < seq_len:
+                continue
+            feature_min = tdf_min[feature_col].values
+            date_min = tdf_min['trade_date'].values
+            label = tdf_min[label_col].values
+            size = len(feature_min) - seq_len * 10 - 18
+            for start in range(seq_len * 9, size + seq_len * 9):
                 if self.is_pre_train:
-                    cur_feature = feature[start:start + seq_len].copy()
+                    cur_feature = feature_min[start:start + seq_len].copy()
                     mask_size = int(self.mask_prob * self.seq_len)
                     soft_max_dim = len(self.price_bounds) + 1
                     positions = np.arange(self.seq_len)
@@ -170,38 +177,48 @@ class Transformer(BaseModel):
                                                                                              l_close]
                 else:
                     last_pos = start + seq_len - 1
-                    cur_feature = feature[start:last_pos + 1].tolist()
+                    cur_min_feature = feature_min[start:last_pos + 1].tolist()
+                    first_date = date_min[start]
+                    cur_day_feature = tdf_day[tdf_day.trade_date <= first_date][feature_col].values[-seq_len:].tolist()
+                    sep = [[2] * (len(feature_col))]
+                    cur_feature = cur_day_feature + sep + cur_min_feature
+                    if len(cur_day_feature) != seq_len:
+                        continue
+                    sell = label[last_pos, SELL]
                     last_t = label[last_pos, CLOSE_T]
-                    if last_t:
-                        sell = int(label[last_pos, DAY_CLOSE] > label[last_pos + 1, DAY_CLOSE])
-                    else:
-                        if last_only:
-                            continue
-                        else:
-                            sell = label[last_pos, SELL]
+                    if last_only and last_t != 1:
+                        continue
+                    adj = label[last_pos, DAY_CLOSE] - label[last_pos + 9, DAY_PRE_CLOSE]
                     buy_sell_close = int(
-                        label[last_pos, BUY] == 1 & (feature[last_pos, C] + 2 < label[last_pos + 9, DAY_CLOSE]))
+                        label[last_pos, BUY] == 1 & (
+                                    feature_min[last_pos, C] + 2 < label[last_pos + 9, DAY_CLOSE] - adj))
                     buy_sell_open = int(
-                        label[last_pos, BUY] == 1 & (feature[last_pos, C] + 2 < label[last_pos + 9, DAY_OPEN]))
+                        label[last_pos, BUY] == 1 & (
+                                    feature_min[last_pos, C] + 2 < label[last_pos + 9, DAY_OPEN] - adj))
                     buy_safe = int(
-                        label[last_pos, BUY] == 1 & (feature[last_pos, C] + 2 < label[last_pos + 9, DAY_MIN_CLOSE]))
+                        label[last_pos, BUY] == 1 & (
+                                    feature_min[last_pos, C] + 2 < label[last_pos + 9, DAY_MIN_CLOSE] - adj))
                     buy_safe_l = int(
-                        label[last_pos, BUY] == 1 & (feature[last_pos, C] - 8 < label[last_pos + 9, DAY_MIN_CLOSE]))
+                        label[last_pos, BUY] == 1 & (
+                                    feature_min[last_pos, C] - 8 < label[last_pos + 9, DAY_MIN_CLOSE] - adj))
                     buy_gain_c2 = int(
-                        label[last_pos, BUY] == 1 & (feature[last_pos, C] + 20 < label[last_pos + 9, DAY_MAX_CLOSE]))
+                        label[last_pos, BUY] == 1 & (
+                                feature_min[last_pos, C] + 20 < label[last_pos + 9, DAY_MAX_CLOSE] - adj))
                     buy_gain_c5 = int(
-                        label[last_pos, BUY] == 1 & (feature[last_pos, C] + 50 < label[last_pos + 9, DAY_MAX_CLOSE]))
+                        label[last_pos, BUY] == 1 & (
+                                feature_min[last_pos, C] + 50 < label[last_pos + 9, DAY_MAX_CLOSE] - adj))
                     cur_label = [[sell], [buy_sell_close], [buy_sell_open], [buy_safe], [buy_safe_l], [buy_gain_c2],
                                  [buy_gain_c5]]
                     yield cur_feature, cur_label
+            gc.collect()
 
     def build(self):
-        self.model, self.pre_model = self.make_model(seq_len=self.seq_len, embedding_size=self.embedding_size)
+        self.model, self.pre_model = self.make_model(seq_len=self.seq_len * 2 + 1, embedding_size=self.embedding_size)
 
     def pre_train(self, df, epochs, workers=8):
         self.is_pre_train = True
         train = df[df.trade_date < 20170101].copy()
-        val = df[(df.trade_date > 20170101) & (df.trade_date < 20180101)].copy()
+        val = df[(df.trade_date > 20170101) & (df.trade_date < 20190101)].copy()
         train_steps = self.get_steps(train)
         val_steps = self.get_steps(val)
         logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
@@ -216,24 +233,27 @@ class Transformer(BaseModel):
         model_name = f"pre_model_{datetime.now().strftime('%Y%m%d')}"
         self.pre_model.save(f"model/{model_name}")
 
-    def train(self, df, epochs, workers=8):
+    def train(self, df_min, df_day, epochs, workers=8):
         self.is_pre_train = False
-        train = df[df.trade_date < 20170101].copy()
+        train_min = df_min[df_min.trade_date < 20170101].copy()
+        train_day = df_day[df_day.trade_date < 20170101].copy()
         vals = []
         last = 20170101
-        for i, s in enumerate([20170101, 20180101, 20190101, 20200101, 20210101]):
+        for i, s in enumerate([20170101, 20180101, 20190101, 20200101, 20210101, 20220101]):
             if i > 0:
-                vals.append(df[(df.trade_date > last) & (df.trade_date < s)].copy())
+                vals.append((df_min[(df_min.trade_date > last) & (df_min.trade_date < s)].copy(),
+                             df_day[(df_day.trade_date > last) & (df_day.trade_date < s)].copy()
+                             ))
                 last = s
-        train_steps = self.get_steps(train)
-        val_steps = self.get_steps(vals[0])
+        train_steps = self.get_steps(train_min)
+        val_steps = self.get_steps(vals[0][0])
         logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
 
-        self.model.fit(self.batch_feature_generator(train),
+        self.model.fit(self.batch_feature_generator(train_min, train_day),
                        steps_per_epoch=train_steps,
                        epochs=epochs,
                        shuffle=True,
-                       validation_data=self.batch_feature_generator(vals[0]),
+                       validation_data=self.batch_feature_generator(vals[0][0], vals[0][1]),
                        validation_steps=val_steps,
                        workers=workers,
                        use_multiprocessing=True)
@@ -241,11 +261,11 @@ class Transformer(BaseModel):
         self.model.save(f"model/{model_name}")
         for i in range(len(vals) - 1):
             print(f"i:{i}/{len(vals) - 2}")
-            self.model.fit(self.batch_feature_generator(vals[i]),
+            self.model.fit(self.batch_feature_generator(vals[i][0], vals[i][1]),
                            steps_per_epoch=val_steps,
                            epochs=epochs,
                            shuffle=True,
-                           validation_data=self.batch_feature_generator(vals[i + 1]),
+                           validation_data=self.batch_feature_generator(vals[i + 1][0], vals[i + 1][1]),
                            validation_steps=val_steps,
                            workers=workers,
                            use_multiprocessing=True)
