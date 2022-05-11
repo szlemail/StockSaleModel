@@ -74,7 +74,8 @@ class BaseModel(object):
     @staticmethod
     def read_csv(filename, param):
         f32, i32, i64 = np.float32, np.int32, np.int64
-        dytpes = {'open': f32, 'close': f32, 'high': f32, 'low': f32, 'vol': f32, 'amount': f32, 'trade_date': i32,
+        dytpes = {'open': f32, 'close': f32, 'high': f32, 'low': f32, 'pre_close': f32, 'vol': f32, 'amount': f32,
+                  'trade_date': i32,
                   'ts_code': str}
         try:
             df = pd.read_csv(f"{param['origin_data_path']}/{filename}", dtype=dytpes, usecols=list(dytpes.keys()))
@@ -99,6 +100,16 @@ class BaseModel(object):
         df['h'] = np.array(pd.cut(df['high'], param['price_bounds'], labels=price_labels)).astype(np.int16)
         df['l'] = np.array(pd.cut(df['low'], param['price_bounds'], labels=price_labels)).astype(np.int16)
         df['c'] = np.array(pd.cut(df['close'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        df['p'] = np.array(pd.cut(df['pre_close'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        if param['is_min']:
+            df['do'] = np.array(pd.cut(df['day_open'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+            df['dc'] = np.array(pd.cut(df['day_close'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+            df['dp'] = np.array(pd.cut(df['day_pre_close'], param['price_bounds'], labels=price_labels)).astype(
+                np.int16)
+            df['d_min'] = np.array(pd.cut(df['day_min_close'], param['price_bounds'], labels=price_labels)).astype(
+                np.int16)
+            df['d_max'] = np.array(pd.cut(df['day_max_close'], param['price_bounds'], labels=price_labels)).astype(
+                np.int16)
         index = index + len(param['price_bounds'])
 
         df['w'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.dayofweek
@@ -186,7 +197,7 @@ class BaseModel(object):
         raise NotImplementedError("make_model method must implemented")
 
     @abstractmethod
-    def feature_generator(self, idf, seq_len):
+    def feature_generator(self, df_min, df_day, seq_len, last_only=False):
         raise NotImplementedError("make_model method must implemented")
 
     def batch_feature_generator(self, tdf):

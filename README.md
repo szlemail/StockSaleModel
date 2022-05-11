@@ -51,6 +51,23 @@
    mean:           sell_auc: 0.7504 - bsc_auc: 0.7789 - val_sell_auc: 0.6835 - val_bsc_auc: 0.7075
    无预训练，相对1有明显提升
    
+5. 20220510 先训练5年，按年迭代训练验证，即前一年训练，后一年用来验证，滚动进行 
+   ROUND 0, 5YEAR: val_sell_auc: 0.6742 - val_bsc_auc: 0.5562 - val_bso_auc: 0.5338 - val_bs_auc: 0.5428 - val_bsl_auc: 0.6039 - val_bgc2_auc: 0.5896 - val_bgc5_auc: 0.6482
+   ROUND 1, 1YEAR: val_sell_auc: 0.6767 - val_bsc_auc: 0.5575 - val_bso_auc: 0.5492 - val_bs_auc: 0.5534 - val_bsl_auc: 0.6360 - val_bgc2_auc: 0.6325 - val_bgc5_auc: 0.6995
+   ROUND 2, 1YEAR: val_sell_auc: 0.6884 - val_bsc_auc: 0.5847 - val_bso_auc: 0.5780 - val_bs_auc: 0.5896 - val_bsl_auc: 0.6583 - val_bgc2_auc: 0.6708 - val_bgc5_auc: 0.7303
+   ROUND 3, 1YEAR: val_sell_auc: 0.6738 - val_bsc_auc: 0.5684 - val_bso_auc: 0.5611 - val_bs_auc: 0.5677 - val_bsl_auc: 0.6458 - val_bgc2_auc: 0.6913 - val_bgc5_auc: 0.7545
+   ROUND 4, 1YEAR: val_sell_auc: 0.6778 - val_bsc_auc: 0.5667 - val_bso_auc: 0.5477 - val_bs_auc: 0.5674 - val_bsl_auc: 0.6438 - val_bgc2_auc: 0.6843 - val_bgc5_auc: 0.7546
+   MEAN   ,      : val_sell_auc: 0.6782 - val_bsc_auc: 0.5667 - val_bso_auc: 0.5540 - val_bs_auc: 0.5642 - val_bsl_auc: 0.6376 - val_bgc2_auc: 0.6537 - val_bgc5_auc: 0.7174
+   无预训练，增加PRE_CLOSE,修正LABEL错误（之前LABEL错误大部分都是0），AUC下降↓
+   
+6. 20220510 去除 PRE_CLOSE 先训练5年，按年迭代训练验证，即前一年训练，后一年用来验证，滚动进行5年
+   ROUND 0, 5YEAR: val_sell_auc: 0.6791 - val_bsc_auc: 0.5714 - val_bso_auc: 0.5451 - val_bs_auc: 0.5631 - val_bsl_auc: 0.6194 - val_bgc2_auc: 0.6080 - val_bgc5_auc: 0.6578
+   ROUND 1, 1YEAR: val_sell_auc: 0.6702 - val_bsc_auc: 0.5436 - val_bso_auc: 0.5383 - val_bs_auc: 0.5352 - val_bsl_auc: 0.6183 - val_bgc2_auc: 0.6165 - val_bgc5_auc: 0.6751
+   ROUND 2, 1YEAR: val_sell_auc: 0.6831 - val_bsc_auc: 0.5744 - val_bso_auc: 0.5681 - val_bs_auc: 0.5766 - val_bsl_auc: 0.6510 - val_bgc2_auc: 0.6691 - val_bgc5_auc: 0.7388
+   ROUND 3, 1YEAR: val_sell_auc: 0.6752 - val_bsc_auc: 0.5723 - val_bso_auc: 0.5632 - val_bs_auc: 0.5731 - val_bsl_auc: 0.6492 - val_bgc2_auc: 0.6870 - val_bgc5_auc: 0.7505
+   ROUND 4, 1YEAR: val_sell_auc: 0.6794 - val_bsc_auc: 0.5699 - val_bso_auc: 0.5581 - val_bs_auc: 0.5750 - val_bsl_auc: 0.6466 - val_bgc2_auc: 0.6850 - val_bgc5_auc: 0.7606
+   MEAN   ,      : val_sell_auc: 0.6774 - val_bsc_auc: 0.5663 - val_bso_auc: 0.5546 - val_bs_auc: 0.5646 - val_bsl_auc: 0.6369 - val_bgc2_auc: 0.6531 - val_bgc5_auc: 0.7166
+   无预训练，去除 PRE_CLOSE，AUC略微下降↓
 
 # api 实时K线接口：
 1. 新浪：

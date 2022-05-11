@@ -35,7 +35,7 @@ class Transformer(BaseModel):
             out2 = (out1 + ffn_out)
             return out2
 
-        layer_in = layers.Input(shape=(seq_len, 10))
+        layer_in = layers.Input(shape=(seq_len, 11))
         l1 = layers.Embedding(25000, embedding_size)(layer_in)
         l2 = layers.Flatten()(l1)
         l2 = layers.Reshape(target_shape=(seq_len, -1))(l2)
@@ -46,13 +46,6 @@ class Transformer(BaseModel):
 
         # finetune 训练模型
         flat = layers.Flatten()(middle_model(middle_model.inputs))
-        # h = layers.Dense(1024, activation='relu')(flat)
-        # h = layers.BatchNormalization()(h)
-        # h = layers.Dense(512, activation='relu')(h)
-        """
-        [[sell], [buy_sell_close], [buy_sell_open], [buy_safe], [buy_safe_l], [buy_gain_c2],
-                                 [buy_gain_c5]]
-        """
         sell_out = layers.Dense(1, activation='sigmoid', name='sell')(flat)
         buy_sell_close = layers.Dense(1, activation='sigmoid', name='bsc')(flat)
         buy_sell_open = layers.Dense(1, activation='sigmoid', name='bso')(flat)
@@ -130,7 +123,7 @@ class Transformer(BaseModel):
                                                    np.array(l5), np.array(l6)]
                         features, l0, l1, l2, l3, l4, l5, l6 = [], [], [], [], [], [], [], []
 
-    def feature_generator(self, df_min, df, seq_len, last_only=False):
+    def feature_generator(self, df_min, df_day, seq_len, last_only=False):
         """
         price: max:2589.0 min:0.6700000166893005
         vol: max:1946133833 min:1
@@ -138,79 +131,79 @@ class Transformer(BaseModel):
         :param seq_len 序列长度
         :return:
         """
-        min_cols = "o,h,l,c,v,t,md,w,m,s,sell,buy,close_t,day_open,day_close,day_pre_close,day_min_close,day_max_close,trade_date".split(
+        min_cols = "o,h,l,c,p,v,t,md,w,m,s,sell,buy,close_t,do,dc,dp,d_min,d_max,trade_date".split(
             ",")
-        cols = "o,h,l,c,v,t,md,w,m,s,trade_date".split(",")
-        feature_col = "o,h,l,c,v,t,md,w,m,s".split(",")
-        O, H, L, C, V, T, MD, W, M, S = range(len(feature_col))
-        label_col = "sell,buy,close_t,day_open,day_close,day_pre_close,day_min_close,day_max_close".split(",")
-        SELL, BUY, CLOSE_T, DAY_OPEN, DAY_CLOSE, DAY_PRE_CLOSE, DAY_MIN_CLOSE, DAY_MAX_CLOSE = range(len(label_col))
+        cols = "o,h,l,c,p,v,t,md,w,m,s,trade_date".split(",")
         for ts_code in np.unique(df_min.ts_code):
             tdf_min = df_min[df_min.ts_code == ts_code].sort_values(by='trade_time')[min_cols].copy()
-            tdf_day = df[df.ts_code == ts_code].sort_values(by='trade_date')[cols].copy()
+            tdf_day = df_day[df_day.ts_code == ts_code].sort_values(by='trade_date')[cols].copy()
             if len(tdf_day) < seq_len:
                 continue
-            feature_min = tdf_min[feature_col].values
-            date_min = tdf_min['trade_date'].values
-            label = tdf_min[label_col].values
-            size = len(feature_min) - seq_len * 10 - 18
-            for start in range(seq_len * 9, size + seq_len * 9):
-                if self.is_pre_train:
-                    cur_feature = feature_min[start:start + seq_len].copy()
-                    mask_size = int(self.mask_prob * self.seq_len)
-                    soft_max_dim = len(self.price_bounds) + 1
-                    positions = np.arange(self.seq_len)
-                    random.shuffle(positions)
-                    positions = np.array(sorted(positions[:mask_size]))
-                    l_open, l_high, l_low, l_close = [], [], [], []
-                    for p in positions:
-                        l_open.append(cur_feature[p, 0])
-                        l_high.append(cur_feature[p, 1])
-                        l_low.append(cur_feature[p, 2])
-                        l_close.append(cur_feature[p, 3])
-                        if random.random() < 0.8:
-                            cur_feature[p, :4] = [1, 1, 1, 1]
-                        else:
-                            if random.random() > 0.5:
-                                cur_feature[p, :4] = np.random.randint([soft_max_dim] * 4)
-                    yield [cur_feature.tolist(), positions.reshape(mask_size, 1).tolist()], [l_open, l_high, l_low,
-                                                                                             l_close]
-                else:
-                    last_pos = start + seq_len - 1
-                    cur_min_feature = feature_min[start:last_pos + 1].tolist()
-                    first_date = date_min[start]
-                    cur_day_feature = tdf_day[tdf_day.trade_date <= first_date][feature_col].values[-seq_len:].tolist()
-                    sep = [[2] * (len(feature_col))]
-                    cur_feature = cur_day_feature + sep + cur_min_feature
-                    if len(cur_day_feature) != seq_len:
-                        continue
-                    sell = label[last_pos, SELL]
-                    last_t = label[last_pos, CLOSE_T]
-                    if last_only and last_t != 1:
-                        continue
-                    adj = label[last_pos, DAY_CLOSE] - label[last_pos + 9, DAY_PRE_CLOSE]
-                    buy_sell_close = int(
-                        label[last_pos, BUY] == 1 & (
-                                    feature_min[last_pos, C] + 2 < label[last_pos + 9, DAY_CLOSE] - adj))
-                    buy_sell_open = int(
-                        label[last_pos, BUY] == 1 & (
-                                    feature_min[last_pos, C] + 2 < label[last_pos + 9, DAY_OPEN] - adj))
-                    buy_safe = int(
-                        label[last_pos, BUY] == 1 & (
-                                    feature_min[last_pos, C] + 2 < label[last_pos + 9, DAY_MIN_CLOSE] - adj))
-                    buy_safe_l = int(
-                        label[last_pos, BUY] == 1 & (
-                                    feature_min[last_pos, C] - 8 < label[last_pos + 9, DAY_MIN_CLOSE] - adj))
-                    buy_gain_c2 = int(
-                        label[last_pos, BUY] == 1 & (
-                                feature_min[last_pos, C] + 20 < label[last_pos + 9, DAY_MAX_CLOSE] - adj))
-                    buy_gain_c5 = int(
-                        label[last_pos, BUY] == 1 & (
-                                feature_min[last_pos, C] + 50 < label[last_pos + 9, DAY_MAX_CLOSE] - adj))
-                    cur_label = [[sell], [buy_sell_close], [buy_sell_open], [buy_safe], [buy_safe_l], [buy_gain_c2],
-                                 [buy_gain_c5]]
-                    yield cur_feature, cur_label
+            for cur_feature, cur_label in self.__feature_generator(tdf_min, tdf_day, seq_len, last_only):
+                yield cur_feature, cur_label
             gc.collect()
+
+    def __feature_generator(self, tdf_min, tdf_day, seq_len, last_only):
+        feature_col = "o,h,l,c,p,v,t,md,w,m,s".split(",")
+        O, H, L, C, P, V, T, MD, W, M, S = range(len(feature_col))
+        label_col = "sell,buy,close_t,do,dc,dp,d_min,d_max".split(",")
+        SELL, BUY, CLOSE_T, DAY_OPEN, DAY_CLOSE, DAY_PRE_CLOSE, DAY_MIN_CLOSE, DAY_MAX_CLOSE = range(len(label_col))
+        feature_min = tdf_min[feature_col].values
+        date_min = tdf_min['trade_date'].values
+        label = tdf_min[label_col].values
+        size = len(feature_min) - seq_len * 10 - 18
+        for start in range(seq_len * 9, size + seq_len * 9):
+            if self.is_pre_train:
+                cur_feature = feature_min[start:start + seq_len].copy()
+                mask_size = int(self.mask_prob * self.seq_len)
+                soft_max_dim = len(self.price_bounds) + 1
+                positions = np.arange(self.seq_len)
+                random.shuffle(positions)
+                positions = np.array(sorted(positions[:mask_size]))
+                l_open, l_high, l_low, l_close = [], [], [], []
+                for p in positions:
+                    l_open.append(cur_feature[p, 0])
+                    l_high.append(cur_feature[p, 1])
+                    l_low.append(cur_feature[p, 2])
+                    l_close.append(cur_feature[p, 3])
+                    if random.random() < 0.8:
+                        cur_feature[p, :4] = [1, 1, 1, 1]
+                    else:
+                        if random.random() > 0.5:
+                            cur_feature[p, :4] = np.random.randint([soft_max_dim] * 4)
+                yield [cur_feature.tolist(), positions.reshape(mask_size, 1).tolist()], [l_open, l_high, l_low,
+                                                                                         l_close]
+            else:  # normal train
+                last_pos = start + seq_len - 1
+                cur_min_feature = feature_min[start:last_pos + 1].tolist()
+                first_date = date_min[start]
+                cur_day_feature = tdf_day[tdf_day.trade_date <= first_date][feature_col].values[-seq_len:].tolist()
+                sep = [[2] * (len(feature_col))]
+                cur_feature = cur_day_feature + sep + cur_min_feature
+                if len(cur_day_feature) != seq_len:
+                    continue
+
+                last_t = label[last_pos, CLOSE_T]
+                if last_only and last_t != 1:
+                    continue
+
+                def price_shift_lt_next_day(price_shift, target_col):
+                    today_buy = label[last_pos, BUY] == 1
+                    buy_price = feature_min[last_pos, C] + price_shift
+                    adj = label[last_pos, DAY_CLOSE] - label[last_pos + 9, DAY_PRE_CLOSE]
+                    sell_price = label[last_pos + 9, target_col] - adj
+                    return int(today_buy & (buy_price < sell_price))
+
+                sell = label[last_pos, SELL]
+                buy_sell_close = price_shift_lt_next_day(2, DAY_CLOSE)
+                buy_sell_open = price_shift_lt_next_day(2, DAY_OPEN)
+                buy_safe = price_shift_lt_next_day(2, DAY_MIN_CLOSE)
+                buy_safe_l = price_shift_lt_next_day(-10, DAY_MIN_CLOSE)
+                buy_gain_c2 = price_shift_lt_next_day(20, DAY_MAX_CLOSE)
+                buy_gain_c5 = price_shift_lt_next_day(50, DAY_MAX_CLOSE)
+                cur_label = [[sell], [buy_sell_close], [buy_sell_open], [buy_safe], [buy_safe_l], [buy_gain_c2],
+                             [buy_gain_c5]]
+                yield cur_feature, cur_label
 
     def build(self):
         self.model, self.pre_model = self.make_model(seq_len=self.seq_len * 2 + 1, embedding_size=self.embedding_size)
