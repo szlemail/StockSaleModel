@@ -68,6 +68,42 @@
    ROUND 4, 1YEAR: val_sell_auc: 0.6794 - val_bsc_auc: 0.5699 - val_bso_auc: 0.5581 - val_bs_auc: 0.5750 - val_bsl_auc: 0.6466 - val_bgc2_auc: 0.6850 - val_bgc5_auc: 0.7606
    MEAN   ,      : val_sell_auc: 0.6774 - val_bsc_auc: 0.5663 - val_bso_auc: 0.5546 - val_bs_auc: 0.5646 - val_bsl_auc: 0.6369 - val_bgc2_auc: 0.6531 - val_bgc5_auc: 0.7166
    无预训练，去除 PRE_CLOSE，AUC略微下降↓
+   
+7. 20220511 增加 PRE_CLOSE 先训练5年，按年迭代训练验证，即前一年训练，后一年用来验证，滚动进行5年
+   ROUND 0, 5YEAR: val_sell_auc: 0.6829 - val_bsc_auc: 0.5764 - val_bso_auc: 0.5490 - val_bs_auc: 0.5627 - val_bsl_auc: 0.6181 - val_bgc2_auc: 0.6067 - val_bgc5_auc: 0.6633
+   ROUND 1, 1YEAR: val_sell_auc: 0.6739 - val_bsc_auc: 0.5452 - val_bso_auc: 0.5467 - val_bs_auc: 0.5453 - val_bsl_auc: 0.6295 - val_bgc2_auc: 0.6310 - val_bgc5_auc: 0.6891
+   ROUND 2, 1YEAR: val_sell_auc: 0.6845 - val_bsc_auc: 0.5808 - val_bso_auc: 0.5738 - val_bs_auc: 0.5843 - val_bsl_auc: 0.6580 - val_bgc2_auc: 0.6631 - val_bgc5_auc: 0.7271
+   ROUND 3, 1YEAR: val_sell_auc: 0.6749 - val_bsc_auc: 0.5631 - val_bso_auc: 0.5541 - val_bs_auc: 0.5608 - val_bsl_auc: 0.6458 - val_bgc2_auc: 0.6819 - val_bgc5_auc: 0.7433
+   ROUND 4, 1YEAR: val_sell_auc: 0.6835 - val_bsc_auc: 0.5642 - val_bso_auc: 0.5524 - val_bs_auc: 0.5646 - val_bsl_auc: 0.6456 - val_bgc2_auc: 0.6834 - val_bgc5_auc: 0.7622
+   MEAN   ,      : val_sell_auc: 0.6799 - val_bsc_auc: 0.5659 - val_bso_auc: 0.5552 - val_bs_auc: 0.5635 - val_bsl_auc: 0.6394 - val_bgc2_auc: 0.6532 - val_bgc5_auc: 0.7170
+   无预训练，增加 PRE_CLOSE，日线至前一天，AUC略微提升↑
+   
+8. 20220511 日线与分钟线收盘对齐
+   ROUND 0, 5YEAR: val_sell_auc: 0.6818 - val_bsc_auc: 0.5629 - val_bso_auc: 0.5386 - val_bs_auc: 0.5416 - val_bsl_auc: 0.6146 - val_bgc2_auc: 0.5882 - val_bgc5_auc: 0.6515
+   ROUND 1, 1YEAR: val_sell_auc: 0.6811 - val_bsc_auc: 0.5594 - val_bso_auc: 0.5696 - val_bs_auc: 0.5769 - val_bsl_auc: 0.6365 - val_bgc2_auc: 0.6503 - val_bgc5_auc: 0.7106
+   ROUND 2, 1YEAR: val_sell_auc: 0.6849 - val_bsc_auc: 0.5915 - val_bso_auc: 0.5727 - val_bs_auc: 0.5966 - val_bsl_auc: 0.6584 - val_bgc2_auc: 0.6704 - val_bgc5_auc: 0.7262
+   ROUND 3, 1YEAR: val_sell_auc: 0.6721 - val_bsc_auc: 0.5580 - val_bso_auc: 0.5568 - val_bs_auc: 0.5580 - val_bsl_auc: 0.6423 - val_bgc2_auc: 0.6780 - val_bgc5_auc: 0.7455
+   ROUND 4, 1YEAR: val_sell_auc: 0.6770 - val_bsc_auc: 0.5653 - val_bso_auc: 0.5581 - val_bs_auc: 0.5714 - val_bsl_auc: 0.6452 - val_bgc2_auc: 0.6877 - val_bgc5_auc: 0.7662
+   MEAN   ,      : val_sell_auc: 0.6794 - val_bsc_auc: 0.5674 - val_bso_auc: 0.5592 - val_bs_auc: 0.5689 - val_bsl_auc: 0.6394 - val_bgc2_auc: 0.6549 - val_bgc5_auc: 0.7200
+   日线与分钟线收盘对齐，AUC略微提升↑
+   
+9. 20220512 日线改用未复权
+   ROUND 0, 5YEAR: val_sell_auc: 0.6823 - val_bsc_auc: 0.5726 - val_bso_auc: 0.5473 - val_bs_auc: 0.5569 - val_bsl_auc: 0.6227 - val_bgc2_auc: 0.6029 - val_bgc5_auc: 0.6607
+   ROUND 1, 1YEAR: val_sell_auc: 0.6708 - val_bsc_auc: 0.5282 - val_bso_auc: 0.5323 - val_bs_auc: 0.5216 - val_bsl_auc: 0.6221 - val_bgc2_auc: 0.6198 - val_bgc5_auc: 0.6790
+   ROUND 2, 1YEAR: val_sell_auc: 0.6748 - val_bsc_auc: 0.5762 - val_bso_auc: 0.5569 - val_bs_auc: 0.5763 - val_bsl_auc: 0.6467 - val_bgc2_auc: 0.6599 - val_bgc5_auc: 0.7295
+   ROUND 3, 1YEAR: val_sell_auc: 0.6675 - val_bsc_auc: 0.5422 - val_bso_auc: 0.5415 - val_bs_auc: 0.5324 - val_bsl_auc: 0.6346 - val_bgc2_auc: 0.6753 - val_bgc5_auc: 0.7387
+   ROUND 4, 1YEAR: val_sell_auc: 0.6806 - val_bsc_auc: 0.5657 - val_bso_auc: 0.5500 - val_bs_auc: 0.5703 - val_bsl_auc: 0.6460 - val_bgc2_auc: 0.6819 - val_bgc5_auc: 0.7590
+   MEAN   ,      : val_sell_auc: 0.6752 - val_bsc_auc: 0.5570 - val_bso_auc: 0.5456 - val_bs_auc: 0.5515 - val_bsl_auc: 0.6344 - val_bgc2_auc: 0.6480 - val_bgc5_auc: 0.7134
+   日线改用未复权，AUC 明显降低↓
+   
+9. 20220515 日线改用未复权
+   ROUND 0, 5YEAR: loss: 0.6081 - auc: 0.7170 - val_loss: 0.6089 - val_auc: 0.6907
+   ROUND 1, 1YEAR: loss: 0.5864 - auc_1: 0.7148 - val_loss: 0.5993 - val_auc_1: 0.6965
+   ROUND 2, 1YEAR: loss: 0.5952 - auc_1: 0.7224 - val_loss: 0.6304 - val_auc_1: 0.6804
+   ROUND 3, 1YEAR: loss: 0.6073 - auc_1: 0.7254 - val_loss: 0.6027 - val_auc_1: 0.6903
+   ROUND 4, 1YEAR: loss: 0.5978 - auc_1: 0.7177 - val_loss: 0.6299 - val_auc_1: 0.6887
+   MEAN   ,      : loss: 0.5990 - auc: 0.7195 - val_loss: 0.6142 - val_auc: 0.6893
+   增加START TOKEN， 同时对最后一层增加DROPOUT 和 L1，L2约束。 初始学习率分别设置为5E-5和1e-5，只有花SELL. 效果显著提升
 
 # api 实时K线接口：
 1. 新浪：

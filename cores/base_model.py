@@ -94,7 +94,7 @@ class BaseModel(object):
 
     @staticmethod
     def transform_feature(df, param):
-        index = 3  # 1 MASK, 2:SEP
+        index = 4  # 0:NA, 1 MASK, 2:SEP, 3:START
         price_labels = np.arange(index, index + len(param['price_bounds']) - 1)
         df['o'] = np.array(pd.cut(df['open'], param['price_bounds'], labels=price_labels)).astype(np.int16)
         df['h'] = np.array(pd.cut(df['high'], param['price_bounds'], labels=price_labels)).astype(np.int16)
@@ -193,14 +193,14 @@ class BaseModel(object):
         return pd.DataFrame()
 
     @abstractmethod
-    def make_model(self, seq_len, embedding_size):
+    def make_model(self):
         raise NotImplementedError("make_model method must implemented")
 
     @abstractmethod
     def feature_generator(self, df_min, df_day, seq_len, last_only=False):
         raise NotImplementedError("make_model method must implemented")
 
-    def batch_feature_generator(self, tdf):
+    def batch_feature_generator(self, tdf_min, tdf, last_only=False):
         features, labels = [], []
         while True:
             for f, l in self.feature_generator(tdf, self.seq_len):

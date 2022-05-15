@@ -6,6 +6,7 @@ import os
 
 # 指定第一块gpu可用
 os.environ["cuda_visible_devices"] = "0"  # 指定gpu的第二种方法
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 phy_gpu = tf.config.list_physical_devices('GPU')
 tf.config.experimental.set_memory_growth(phy_gpu[0], True)
 logic_gpu = tf.config.list_logical_devices(['GPU'])
@@ -24,7 +25,7 @@ if __name__ == '__main__':
     data_day = transformer.load_data(years=10)
     print(data_day.head(3))
     transformer.build()
-    # transformer.pre_train(data, epochs=1, workers=8)
+    transformer.pre_train(data_min, data_day, epochs=1, workers=8)
     transformer.train(data_min, data_day, epochs=1, workers=8)
 
     # model.save("model")
