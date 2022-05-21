@@ -315,7 +315,7 @@ class Transformer(BaseModel):
 
     def pre_train(self, df_min, df_day, epochs, workers=8):
         self.is_pre_train = True
-        for train_min, train_day, val_min, val_day in self.get_train_val_by_year(df_min, df_day):
+        for train_min, train_day, val_min, val_day in self.get_train_val_by_year(df_min, df_day, init_start_days=2000):
             train_steps = self.get_steps(train_min)
             val_steps = self.get_steps(val_min)
             logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
@@ -329,11 +329,12 @@ class Transformer(BaseModel):
                                use_multiprocessing=True)
             model_name = f"pre_model_{datetime.now().strftime('%Y%m%d')}"
             self.pre_model.save(f"model/{model_name}")
+            break
 
     def train(self, df_min, df_day, epochs, workers=8):
         self.is_pre_train = False
         n_round = 0
-        for train_min, train_day, val_min, val_day in self.get_train_val_by_year(df_min, df_day):
+        for train_min, train_day, val_min, val_day in self.get_train_val_by_year(df_min, df_day, init_start_days=2000):
             train_steps = self.get_steps(train_min)
             val_steps = self.get_steps(val_min)
             logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
