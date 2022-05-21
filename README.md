@@ -96,7 +96,7 @@
    MEAN   ,      : val_sell_auc: 0.6752 - val_bsc_auc: 0.5570 - val_bso_auc: 0.5456 - val_bs_auc: 0.5515 - val_bsl_auc: 0.6344 - val_bgc2_auc: 0.6480 - val_bgc5_auc: 0.7134
    日线改用未复权，AUC 明显降低↓
    
-9. 20220515 日线改用未复权
+9. 20220515 
    ROUND 0, 5YEAR: loss: 0.6081 - auc: 0.7170 - val_loss: 0.6089 - val_auc: 0.6907
    ROUND 1, 1YEAR: loss: 0.5864 - auc_1: 0.7148 - val_loss: 0.5993 - val_auc_1: 0.6965
    ROUND 2, 1YEAR: loss: 0.5952 - auc_1: 0.7224 - val_loss: 0.6304 - val_auc_1: 0.6804
@@ -104,6 +104,37 @@
    ROUND 4, 1YEAR: loss: 0.5978 - auc_1: 0.7177 - val_loss: 0.6299 - val_auc_1: 0.6887
    MEAN   ,      : loss: 0.5990 - auc: 0.7195 - val_loss: 0.6142 - val_auc: 0.6893
    增加START TOKEN， 同时对最后一层增加DROPOUT 和 L1，L2约束。 初始学习率分别设置为5E-5和1e-5，只有花SELL. 效果显著提升
+   
+10. 20220519 增加预训练:
+   预训练学习率:
+   initial_learning_rate=1e-6,
+   first_decay_steps=50000,
+   t_mul=2.0,
+   m_mul=0.9,
+   alpha=0.1,
+   训练学习率：
+   initial_learning_rate=5e-6,
+   first_decay_steps=20000,
+   t_mul=2.0,
+   m_mul=0.8,
+   alpha=0.05,
+   ROUND 0, 5YEAR: loss: 0.7007 - auc: 0.7030 - val_loss: 0.5942 - val_auc: 0.6959
+   ROUND 1, 1YEAR: loss: 0.5898 - auc: 0.7137 - val_loss: 0.6017 - val_auc: 0.6875
+   ROUND 2, 1YEAR: loss: 0.5849 - auc: 0.7255 - val_loss: 0.6034 - val_auc: 0.6857
+   ROUND 3, 1YEAR: loss: 0.5993 - auc: 0.7055 - val_loss: 0.6033 - val_auc: 0.6979
+   ROUND 4, 1YEAR: loss: 0.5987 - auc: 0.7099 - val_loss: 0.6064 - val_auc: 0.6895
+   MEAN   ,      : loss: 0.6147 - auc: 0.7115 - val_loss: 0.6018 - val_auc: 0.6913
+   效果明显提升 ↑ 
+   
+    
+11. 20220520 增加样本量至13年,  训练12年，内存出错
+   ROUND 0, 5YEAR: loss: 0.7280 - auc: 0.7064 - val_loss: 0.5754 - val_auc: 0.6982
+   ROUND 1, 1YEAR: loss: 0.5787 - auc: 0.7020 - val_loss: 0.5869 - val_auc: 0.7020
+   ROUND 2, 1YEAR: loss: 0.5830 - auc: 0.7160 - val_loss: 0.5977 - val_auc: 0.6932
+   MEAN   ,      : loss: 0.6299 - auc: 0.7081 - val_loss: 0.5867 - val_auc: 0.6978 
+   从3年验证集看，效果明显提升。 
+
+
 
 # api 实时K线接口：
 1. 新浪：

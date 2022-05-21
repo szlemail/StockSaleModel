@@ -27,7 +27,7 @@ class BaseModel(object):
         self.stock_index_list = ['399001.SZ', '399006.SZ', '000001.SH']
         self.price_bounds = self.get_discrete_bounds(5000, round_number=2)
         self.price_bounds.reverse()
-        self.vol_bounds = self.get_discrete_bounds(5000000000, decay=0.997, round_number=0)
+        self.vol_bounds = self.get_discrete_bounds(5000000000, decay=0.995, round_number=0)
         self.vol_bounds.reverse()
         self.time_bounds = [925, 955, 1025, 1055, 1125, 1155, 1325, 1355, 1425, 1455, 1525]
         self.stock_code_list = np.array([s.strip(".csv") for s in os.listdir(self.origin_data_path)])
@@ -38,6 +38,20 @@ class BaseModel(object):
         fmt = "%Y%m%d"
         days = years * 365 + years // 4
         return int((datetime.now() + timedelta(days=-days)).strftime(fmt))
+
+    @staticmethod
+    def get_market(ts_code):
+        if ts_code[:1] == '3':
+            return 4
+        elif ts_code[:3] == '002':
+            return 3
+        elif ts_code[:3] == '0':
+            return 2
+        elif ts_code[:2] == '68':
+            return 1
+        else:
+            return 0
+
 
     @staticmethod
     def get_discrete_bounds(max_value, min_value=0.1, round_number=2, decay=0.999):

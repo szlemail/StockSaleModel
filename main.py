@@ -20,9 +20,9 @@ if __name__ == '__main__':
     # 显示所有行
     pd.set_option('display.max_rows', 100)  # 最多显示10行
     transformer = Transformer()
-    data_min = transformer.load_min_data(years=10)
+    data_min = transformer.load_min_data(years=13)
     print(data_min.head(3))
-    data_day = transformer.load_data(years=10)
+    data_day = transformer.load_data(years=13)
     print(data_day.head(3))
     transformer.build()
     transformer.pre_train(data_min, data_day, epochs=1, workers=8)

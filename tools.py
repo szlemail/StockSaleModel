@@ -28,11 +28,9 @@ def killall():
 
 if __name__ == "__main__":
     x = """
-   ROUND 0, 5YEAR: loss: 0.6081 - auc: 0.7170 - val_loss: 0.6089 - val_auc: 0.6907
-   ROUND 1, 1YEAR: loss: 0.5864 - auc_1: 0.7148 - val_loss: 0.5993 - val_auc_1: 0.6965
-   ROUND 2, 1YEAR: loss: 0.5952 - auc_1: 0.7224 - val_loss: 0.6304 - val_auc_1: 0.6804
-   ROUND 3, 1YEAR: loss: 0.6073 - auc_1: 0.7254 - val_loss: 0.6027 - val_auc_1: 0.6903
-   ROUND 4, 1YEAR: loss: 0.5978 - auc_1: 0.7177 - val_loss: 0.6299 - val_auc_1: 0.6887
+   ROUND 0, 5YEAR: loss: 0.7280 - auc: 0.7064 - val_loss: 0.5754 - val_auc: 0.6982
+   ROUND 1, 1YEAR: loss: 0.5787 - auc: 0.7020 - val_loss: 0.5869 - val_auc: 0.7020
+   ROUND 2, 1YEAR: loss: 0.5830 - auc: 0.7160 - val_loss: 0.5977 - val_auc: 0.6932
    """
     run(x)
-    # killall()
+    killall()

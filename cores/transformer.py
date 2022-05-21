@@ -40,7 +40,7 @@ class Transformer(BaseModel):
             return out2
 
         layer_in = layers.Input(shape=(self.model_seq_len, self.feature_size))
-        emb = layers.Embedding(25000, self.embedding_size)
+        emb = layers.Embedding(20000, self.embedding_size)
         l1 = emb(layer_in)
         l2 = layers.Flatten()(l1)
         l2 = layers.Reshape(target_shape=(self.model_seq_len, -1))(l2)
@@ -59,19 +59,25 @@ class Transformer(BaseModel):
         high = layers.Dense(1, activation='sigmoid')(gather_vector)
         low = layers.Dense(1, activation='sigmoid')(gather_vector)
         close = layers.Dense(1, activation='sigmoid')(gather_vector)
+        pre_close = layers.Dense(1, activation='sigmoid')(gather_vector)
+        vol = layers.Dense(1, activation='sigmoid')(gather_vector)
         pool = layers.Lambda(lambda x: x[:, 0, :])(vectors)
         is_next = layers.Dense(1, activation='sigmoid', name='next')(pool)
-        pre_model = Model(middle_model.inputs + [position], [open, high, low, close, is_next], name='pre_model')
+        stock = layers.Dense(len(self.stock_code_list), activation='softmax', name='stock')(pool)
+        market = layers.Dense(5, activation='softmax', name='market')(pool)
+        pre_model = Model(middle_model.inputs + [position],
+                          [open, high, low, close, pre_close, vol, is_next, stock, market],
+                          name='pre_model')
         lr_pre = tf.keras.optimizers.schedules.CosineDecayRestarts(
-            initial_learning_rate=5e-6,
+            initial_learning_rate=1e-6,
             first_decay_steps=50000,
             t_mul=2.0,
-            m_mul=1.0,
-            alpha=0.01,
+            m_mul=0.9,
+            alpha=0.1,
             name=None
         )
-        losses = ['mse'] * 4 + ['binary_focal_crossentropy']
-        weights = [0.125, 0.125, 0.125, 0.125, 0.5]
+        losses = ['mse'] * 6 + ['binary_focal_crossentropy'] + ['sparse_categorical_crossentropy'] * 2
+        weights = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1]
         pre_model.compile(optimizer=tf.keras.optimizers.Adam(lr_pre), loss=losses, loss_weights=weights)
         # pre_model.summary()
         self.pre_model, self.middle_model = pre_model, middle_model
@@ -125,7 +131,7 @@ class Transformer(BaseModel):
 
     def batch_feature_generator(self, tdf_min, tdf, last_only=False):
         if self.is_pre_train:
-            f0, f1, l0, l1, l2, l3, l4 = [], [], [], [], [], [], []
+            f0, f1, l0, l1, l2, l3, l4, l5, l6, l7, l8 = [], [], [], [], [], [], [], [], [], [], []
             while True:
                 for f, l in self.feature_generator(tdf_min, tdf, self.seq_len):
                     f0.append(f[0])
@@ -135,10 +141,15 @@ class Transformer(BaseModel):
                     l2.append(l[2])
                     l3.append(l[3])
                     l4.append(l[4])
+                    l5.append(l[5])
+                    l6.append(l[6])
+                    l7.append(l[7])
+                    l8.append(l[8])
                     if len(f0) >= self.batch_size:
                         yield [np.array(f0), np.array(f1)], [np.array(l0), np.array(l1), np.array(l2), np.array(l3),
-                                                             np.array(l4)]
-                        f0, f1, l0, l1, l2, l3, l4 = [], [], [], [], [], [], []
+                                                             np.array(l4), np.array(l5), np.array(l6), np.array(l7),
+                                                             np.array(l8)]
+                        f0, f1, l0, l1, l2, l3, l4, l5, l6, l7, l8 = [], [], [], [], [], [], [], [], [], [], []
         else:
             features, l0, l1, l2, l3, l4, l5, l6 = [], [], [], [], [], [], [], []
             while True:
@@ -174,13 +185,13 @@ class Transformer(BaseModel):
             if len(tdf_day) < seq_len:
                 continue
             for cur_feature, cur_label in self.__feature_generator(tdf_min, tdf_day, seq_len, last_only):
-                yield cur_feature, cur_label
+                yield cur_feature, cur_label + [[self.stock_code_mapping.get(ts_code)], [self.get_market(ts_code)]]
             gc.collect()
 
     def make_pretrain_sample(self, cur_feature, is_next):
         cur_feature = np.array(cur_feature)
         mask_size = int(self.mask_prob * self.seq_len)
-        soft_max_dim = len(self.price_bounds) + 4
+        soft_max_dim = len(self.price_bounds) + 4 + len(self.vol_bounds)
         positions = np.arange(1, self.seq_len)
         random.shuffle(positions)
         positions_d = np.array(sorted(positions[:mask_size]))
@@ -189,20 +200,22 @@ class Transformer(BaseModel):
         positions = positions_d.tolist()
         positions += positions_m.tolist()
         positions = np.array(positions)
-        l_open, l_high, l_low, l_close = [], [], [], []
+        l_open, l_high, l_low, l_close, l_pre_close, l_val = [], [], [], [], [], []
         for p in positions:
             l_open.append(cur_feature[p, 0] * 1.0 / soft_max_dim)
             l_high.append(cur_feature[p, 1] * 1.0 / soft_max_dim)
             l_low.append(cur_feature[p, 2] * 1.0 / soft_max_dim)
             l_close.append(cur_feature[p, 3] * 1.0 / soft_max_dim)
+            l_pre_close.append(cur_feature[p, 4] * 1.0 / soft_max_dim)
+            l_val.append(cur_feature[p, 5] * 1.0 / soft_max_dim)
             if random.random() < 0.8:
                 if random.random() > 0.5:
                     cur_feature[p, :4] = [1, 1, 1, 1]
             else:
                 if random.random() > 0.5:
                     cur_feature[p, :4] = np.random.randint([soft_max_dim] * 4)
-        return [cur_feature.tolist(), positions.reshape(mask_size * 2, 1).tolist()], [l_open, l_high, l_low,
-                                                                                      l_close, [is_next]]
+        return [cur_feature.tolist(), positions.reshape(mask_size * 2, 1).tolist()], [l_open, l_high, l_low, l_close,
+                                                                                      l_pre_close, l_val, [is_next]]
 
     def __feature_generator(self, tdf_min, tdf_day, seq_len, last_only):
         # feature_col = "o,h,l,c,p,v,t,md,w,m,s".split(",")
@@ -315,16 +328,16 @@ class Transformer(BaseModel):
         val_steps = self.get_steps(vals[0][0])
         logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
         lr = tf.keras.optimizers.schedules.CosineDecayRestarts(
-            initial_learning_rate=5e-5,
+            initial_learning_rate=5e-6,
             first_decay_steps=20000,
             t_mul=2.0,
-            m_mul=0.99,
-            alpha=0.01,
+            m_mul=0.8,
+            alpha=0.05,
             name=None
         )
         self.model.compile(optimizer=tf.keras.optimizers.Adam(lr),
-                      loss='binary_crossentropy',
-                      metrics=tf.metrics.AUC())
+                           loss='binary_crossentropy',
+                           metrics=tf.metrics.AUC())
         self.model.summary()
         self.model.fit(self.batch_feature_generator(train_min, train_day),
                        steps_per_epoch=train_steps,
@@ -336,17 +349,6 @@ class Transformer(BaseModel):
                        use_multiprocessing=True)
         model_name = f"model_{datetime.now().strftime('%Y%m%d')}"
         self.model.save(f"model/{model_name}")
-        lr = tf.keras.optimizers.schedules.CosineDecayRestarts(
-            initial_learning_rate=1e-5,
-            first_decay_steps=10000,
-            t_mul=2.0,
-            m_mul=0.99,
-            alpha=0.01,
-            name=None
-        )
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(lr),
-                      loss='binary_crossentropy',
-                      metrics=tf.metrics.AUC())
         for i in range(len(vals) - 1):
             print(f"i:{i}/{len(vals) - 2}")
             self.model.fit(self.batch_feature_generator(vals[i][0], vals[i][1]),
