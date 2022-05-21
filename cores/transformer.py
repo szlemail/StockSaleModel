@@ -99,6 +99,18 @@ class Transformer(BaseModel):
         # outs = self.mmoe(input_v=flat, expert_dim=128, tower_dim=64, n_expert=7,
         #                  target_names=['sell', 'bsc', 'bso', 'bs', 'bsl', 'bgc2', 'bgc5'], activaton='sigmoid')
         model = Model(inputs=self.middle_model.inputs, outputs=sell_out, name='sale_model')
+        lr = tf.keras.optimizers.schedules.CosineDecayRestarts(
+            initial_learning_rate=5e-6,
+            first_decay_steps=20000,
+            t_mul=2.0,
+            m_mul=0.8,
+            alpha=0.05,
+            name=None
+        )
+        model.compile(optimizer=tf.keras.optimizers.Adam(lr),
+                      loss='binary_crossentropy',
+                      metrics=tf.metrics.AUC())
+        model.summary()
         self.model = model
 
     @staticmethod
@@ -286,81 +298,57 @@ class Transformer(BaseModel):
         self.make_pre_model()
         self.make_model()
 
+    def get_train_val_by_year(self, df_min, df_day, step_days=250, init_start_days=1000):
+        dates = sorted(np.unique(df_min.trade_date))
+        logging.info(f"length of dates is {len(dates)}")
+        for i in range(init_start_days, len(dates), step_days):
+            start = 0 if i == init_start_days else i - step_days - self.seq_len - self.seq_len // 9 - 2
+            end = i
+            val_start = i - self.seq_len - self.seq_len // 9 - 2
+            val_end = min(end + step_days, len(dates) - 1)
+            logging.info(f"train: {dates[start]} - {dates[end]}, val: {dates[val_start]} - {dates[val_end]}")
+            train_min = df_min[(df_min.trade_date > dates[start]) & (df_min.trade_date < dates[end])].copy()
+            train_day = df_day[(df_day.trade_date > dates[start]) & (df_day.trade_date < dates[end])].copy()
+            val_min = df_min[(df_min.trade_date > dates[val_start]) & (df_min.trade_date < dates[val_end])].copy()
+            val_day = df_day[(df_day.trade_date > dates[val_start]) & (df_day.trade_date < dates[val_end])].copy()
+            yield train_min, train_day, val_min, val_day
+
     def pre_train(self, df_min, df_day, epochs, workers=8):
         self.is_pre_train = True
-        train_min = df_min[df_min.trade_date < 20170101].copy()
-        train_day = df_day[df_day.trade_date < 20170101].copy()
-        vals = []
-        last = 20170101
-        for i, s in enumerate([20170101, 20180101, 20190101, 20200101, 20210101, 20220101]):
-            if i > 0:
-                vals.append((df_min[(df_min.trade_date > last) & (df_min.trade_date < s)].copy(),
-                             df_day[(df_day.trade_date > last) & (df_day.trade_date < s)].copy()
-                             ))
-                last = s
-        train_steps = self.get_steps(train_min)
-        val_steps = self.get_steps(vals[0][0])
-        logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
-        self.pre_model.fit(self.batch_feature_generator(train_min, train_day),
-                           steps_per_epoch=train_steps,
-                           epochs=epochs,
-                           shuffle=True,
-                           validation_data=self.batch_feature_generator(vals[0][0], vals[0][1]),
-                           validation_steps=val_steps,
-                           workers=workers,
-                           use_multiprocessing=True)
-        model_name = f"pre_model_{datetime.now().strftime('%Y%m%d')}"
-        self.pre_model.save(f"model/{model_name}")
+        for train_min, train_day, val_min, val_day in self.get_train_val_by_year(df_min, df_day):
+            train_steps = self.get_steps(train_min)
+            val_steps = self.get_steps(val_min)
+            logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
+            self.pre_model.fit(self.batch_feature_generator(train_min, train_day),
+                               steps_per_epoch=train_steps,
+                               epochs=epochs,
+                               shuffle=True,
+                               validation_data=self.batch_feature_generator(val_min, val_day),
+                               validation_steps=val_steps,
+                               workers=workers,
+                               use_multiprocessing=True)
+            model_name = f"pre_model_{datetime.now().strftime('%Y%m%d')}"
+            self.pre_model.save(f"model/{model_name}")
 
     def train(self, df_min, df_day, epochs, workers=8):
         self.is_pre_train = False
-        train_min = df_min[df_min.trade_date < 20170101].copy()
-        train_day = df_day[df_day.trade_date < 20170101].copy()
-        vals = []
-        last = 20170101
-        for i, s in enumerate([20170101, 20180101, 20190101, 20200101, 20210101, 20220101]):
-            if i > 0:
-                vals.append((df_min[(df_min.trade_date > last) & (df_min.trade_date < s)].copy(),
-                             df_day[(df_day.trade_date > last) & (df_day.trade_date < s)].copy()
-                             ))
-                last = s
-        train_steps = self.get_steps(train_min)
-        val_steps = self.get_steps(vals[0][0])
-        logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
-        lr = tf.keras.optimizers.schedules.CosineDecayRestarts(
-            initial_learning_rate=5e-6,
-            first_decay_steps=20000,
-            t_mul=2.0,
-            m_mul=0.8,
-            alpha=0.05,
-            name=None
-        )
-        self.model.compile(optimizer=tf.keras.optimizers.Adam(lr),
-                           loss='binary_crossentropy',
-                           metrics=tf.metrics.AUC())
-        self.model.summary()
-        self.model.fit(self.batch_feature_generator(train_min, train_day),
-                       steps_per_epoch=train_steps,
-                       epochs=epochs,
-                       shuffle=True,
-                       validation_data=self.batch_feature_generator(vals[0][0], vals[0][1]),
-                       validation_steps=val_steps,
-                       workers=workers,
-                       use_multiprocessing=True)
-        model_name = f"model_{datetime.now().strftime('%Y%m%d')}"
-        self.model.save(f"model/{model_name}")
-        for i in range(len(vals) - 1):
-            print(f"i:{i}/{len(vals) - 2}")
-            self.model.fit(self.batch_feature_generator(vals[i][0], vals[i][1]),
-                           steps_per_epoch=val_steps,
+        n_round = 0
+        for train_min, train_day, val_min, val_day in self.get_train_val_by_year(df_min, df_day):
+            train_steps = self.get_steps(train_min)
+            val_steps = self.get_steps(val_min)
+            logging.info(f"train_steps:{train_steps}, val_steps:{val_steps}")
+            self.model.fit(self.batch_feature_generator(train_min, train_day),
+                           steps_per_epoch=train_steps,
                            epochs=epochs,
                            shuffle=True,
-                           validation_data=self.batch_feature_generator(vals[i + 1][0], vals[i + 1][1]),
+                           validation_data=self.batch_feature_generator(val_min, val_day),
                            validation_steps=val_steps,
                            workers=workers,
                            use_multiprocessing=True)
-            model_name = f"model_{i}_{datetime.now().strftime('%Y%m%d')}"
+
+            model_name = f"model_{n_round}_{datetime.now().strftime('%Y%m%d')}"
             self.model.save(f"model/{model_name}")
+            n_round += 1
 
     @staticmethod
     def predict(x):

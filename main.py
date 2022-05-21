@@ -18,7 +18,7 @@ if __name__ == '__main__':
     pd.set_option('display.width', 300)
     pd.set_option('display.max_columns', 30)
     # 显示所有行
-    pd.set_option('display.max_rows', 100)  # 最多显示10行
+    pd.set_option('display.max_rows', 100)  # 最多显示100行
     transformer = Transformer()
     data_min = transformer.load_min_data(years=13)
     print(data_min.head(3))
