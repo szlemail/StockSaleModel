@@ -6,23 +6,27 @@ from keras import layers, Model, regularizers
 from keras.models import load_model
 from cores.base_model import BaseModel
 import numpy as np
+import pandas as pd
 import logging
 from common.configs import config
 from multiprocessing import Manager, Lock
 
 
-class Transformer(BaseModel):
+class TransformerPct(BaseModel):
     """
     借鉴 transformer 的 ENCODER 方式进行模型训练
     """
 
     def __init__(self):
-        super(Transformer, self).__init__()
+        super(TransformerPct, self).__init__()
         self.mask_prob = float(config.get("model", "mask_prob", default='0.05'))
         self.is_pre_train = False
         self.model, self.pre_model, middle_model = None, None, None
         self.model_seq_len = self.seq_len * 2 + 2
-        self.feature_size = 8
+        self.feature_size = 7
+        positive_price_bounds = self.get_discrete_bounds(max_value=20, min_value=0.01, round_number=2, decay=0.99)
+        self.price_bounds = sorted(
+            positive_price_bounds + [-n for n in positive_price_bounds] + [100, 20.1, -20.1, -100])
         self.manager = Manager()
         self.lock = Lock()
         self.train_visited = self.manager.dict()
@@ -42,7 +46,7 @@ class Transformer(BaseModel):
             return out2
 
         layer_in = layers.Input(shape=(self.model_seq_len, self.feature_size))
-        emb = layers.Embedding(11000, self.embedding_size)
+        emb = layers.Embedding(4500, self.embedding_size)
         l1 = emb(layer_in)
         l2 = layers.Flatten()(l1)
         l2 = layers.Reshape(target_shape=(self.model_seq_len, -1))(l2)
@@ -53,22 +57,19 @@ class Transformer(BaseModel):
 
         # pretrain 模型
         mask_size = int(self.model_seq_len * self.mask_prob)
-        soft_max_dim = len(self.price_bounds) + 4
         vectors = middle_model(middle_model.inputs)
         position = layers.Input(shape=(mask_size, 1), dtype=tf.int32)
         gather_vector = layers.Lambda(lambda x: tf.gather_nd(x[0], x[1], batch_dims=1))([vectors, position])
-        open = layers.Dense(1, activation='sigmoid')(gather_vector)
+        lopen = layers.Dense(1, activation='sigmoid')(gather_vector)
         high = layers.Dense(1, activation='sigmoid')(gather_vector)
         low = layers.Dense(1, activation='sigmoid')(gather_vector)
         close = layers.Dense(1, activation='sigmoid')(gather_vector)
-        pre_close = layers.Dense(1, activation='sigmoid')(gather_vector)
-        vol = layers.Dense(1, activation='sigmoid')(gather_vector)
         pool = layers.Lambda(lambda x: x[:, 0, :])(vectors)
-        is_next = layers.Dense(1, activation='sigmoid', name='next')(pool)
-        stock = layers.Dense(len(self.stock_code_list), activation='softmax', name='stock')(pool)
-        market = layers.Dense(5, activation='softmax', name='market')(pool)
+        is_next = layers.Dense(1, activation='sigmoid', name='next',kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001) )(pool)
+        stock = layers.Dense(len(self.stock_code_list), activation='softmax', name='stock',kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001) )(pool)
+        market = layers.Dense(5, activation='softmax', name='market',kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001) )(pool)
         pre_model = Model(middle_model.inputs + [position],
-                          [open, high, low, close, pre_close, vol, is_next, stock, market],
+                          [lopen, high, low, close, is_next, stock, market],
                           name='pre_model')
         lr_pre = tf.keras.optimizers.schedules.CosineDecayRestarts(
             initial_learning_rate=1e-6,
@@ -78,8 +79,8 @@ class Transformer(BaseModel):
             alpha=0.1,
             name=None
         )
-        losses = ['mse'] * 6 + ['binary_focal_crossentropy'] + ['sparse_categorical_crossentropy'] * 2
-        weights = [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1]
+        losses = ['mse'] * 4 + ['binary_crossentropy'] + ['sparse_categorical_crossentropy'] * 2
+        weights = [0.1, 0.1, 0.1, 0.1, 0.1, 0.2, 0.2]
         pre_model.compile(optimizer=tf.keras.optimizers.Adam(lr_pre), loss=losses, loss_weights=weights)
         # pre_model.summary()
         self.pre_model, self.middle_model = pre_model, middle_model
@@ -146,7 +147,7 @@ class Transformer(BaseModel):
     def batch_feature_generator(self, tdf_min, tdf, last_only=False, is_train=True):
         n_round = 1
         if self.is_pre_train:
-            f0, f1, l0, l1, l2, l3, l4, l5, l6, l7, l8 = [], [], [], [], [], [], [], [], [], [], []
+            f0, f1, l0, l1, l2, l3, l4, l5, l6 = [], [], [], [], [], [], [], [], []
             while True:
                 for f, l in self.feature_generator(tdf_min, tdf, self.seq_len, n_round, is_train=is_train):
                     f0.append(f[0])
@@ -158,13 +159,10 @@ class Transformer(BaseModel):
                     l4.append(l[4])
                     l5.append(l[5])
                     l6.append(l[6])
-                    l7.append(l[7])
-                    l8.append(l[8])
                     if len(f0) >= self.batch_size:
                         yield [np.array(f0), np.array(f1)], [np.array(l0), np.array(l1), np.array(l2), np.array(l3),
-                                                             np.array(l4), np.array(l5), np.array(l6), np.array(l7),
-                                                             np.array(l8)]
-                        f0, f1, l0, l1, l2, l3, l4, l5, l6, l7, l8 = [], [], [], [], [], [], [], [], [], [], []
+                                                             np.array(l4), np.array(l5), np.array(l6)]
+                        f0, f1, l0, l1, l2, l3, l4, l5, l6= [], [], [], [], [], [], [], [], []
                 n_round += 1
         else:
             features, l0, l1, l2, l3, l4, l5, l6 = [], [], [], [], [], [], [], []
@@ -194,11 +192,9 @@ class Transformer(BaseModel):
         :param last_only 是否只生成收盘时刻样本
         :return:
         """
-        min_cols = "o,h,l,c,p,v,t,md,w,m,s,sell,buy,close_t,do,dc,dp,d_min,d_max,trade_date".split(
-            ",")
-        cols = "o,h,l,c,p,v,t,md,w,m,s,trade_date".split(",")
+        min_cols = "o,h,l,c,v,t,md,w,m,s,sell,buy,close_t,do,dc,dp,d_min,d_max,trade_date".split(",")
+        cols = "o,h,l,c,v,t,md,w,m,s,trade_date".split(",")
         for ts_code in np.unique(df_min.ts_code):
-
             with self.lock:
                 if is_train:
                     if ts_code in self.train_visited and self.train_visited[ts_code] == n_round:
@@ -221,7 +217,7 @@ class Transformer(BaseModel):
     def make_pretrain_sample(self, cur_feature, is_next):
         cur_feature = np.array(cur_feature)
         mask_size = int(self.mask_prob * self.seq_len)
-        soft_max_dim = len(self.price_bounds) + 4 + len(self.vol_bounds)
+        soft_max_dim = len(self.price_bounds) + 4
         positions = np.arange(1, self.seq_len)
         random.shuffle(positions)
         positions_d = np.array(sorted(positions[:mask_size]))
@@ -236,24 +232,23 @@ class Transformer(BaseModel):
             l_high.append(cur_feature[p, 1] * 1.0 / soft_max_dim)
             l_low.append(cur_feature[p, 2] * 1.0 / soft_max_dim)
             l_close.append(cur_feature[p, 3] * 1.0 / soft_max_dim)
-            l_pre_close.append(cur_feature[p, 4] * 1.0 / soft_max_dim)
-            l_val.append(cur_feature[p, 5] * 1.0 / soft_max_dim)
             if random.random() < 0.8:
                 if random.random() > 0.5:
-                    cur_feature[p, :4] = [1, 1, 1, 1]
+                    cur_feature[p, :5] = [1, 1, 1, 1, 1]
             else:
                 if random.random() > 0.5:
-                    cur_feature[p, :4] = np.random.randint([soft_max_dim] * 4)
-        return [cur_feature.tolist(), positions.reshape(mask_size * 2, 1).tolist()], [l_open, l_high, l_low, l_close,
-                                                                                      l_pre_close, l_val, [is_next]]
+                    cur_feature[p, :5] = np.random.randint([soft_max_dim] * 5)
+        return [cur_feature.tolist(), positions.reshape(mask_size * 2, 1).tolist()], [l_open, l_high, l_low,
+                                                                                      l_close,
+                                                                                      [is_next]]
 
     def __feature_generator(self, tdf_min, tdf_day, seq_len, last_only):
         # feature_col = "o,h,l,c,p,v,t,md,w,m,s".split(",")
         # O, H, L, C, P, V, T, MD, W, M, S = range(len(feature_col))
-        feature_col = "o,h,l,c,p,v,t,w".split(",")
-        O, H, L, C, P, V, T, W = range(len(feature_col))
-        label_col = "sell,buy,close_t,do,dc,dp,d_min,d_max".split(",")
-        SELL, BUY, CLOSE_T, DAY_OPEN, DAY_CLOSE, DAY_PRE_CLOSE, DAY_MIN_CLOSE, DAY_MAX_CLOSE = range(len(label_col))
+        feature_col = "o,h,l,c,v,t,w".split(",")
+        O, H, L, C, V, T, W = range(len(feature_col))
+        label_col = "sell,buy,close_t,do,dc,d_min,d_max".split(",")
+        SELL, BUY, CLOSE_T, DAY_OPEN, DAY_CLOSE, DAY_MIN_CLOSE, DAY_MAX_CLOSE = range(len(label_col))
         feature_min = tdf_min[feature_col].values
         date_min = tdf_min['trade_date'].values
         label = tdf_min[label_col].values
@@ -279,11 +274,6 @@ class Transformer(BaseModel):
             cur_day_feature = tdf_day[tdf_day.trade_date < last_date][feature_col].values[-seq_len:].copy()
             if len(cur_day_feature) != seq_len:
                 continue
-            # adj qfq ajust
-            if cur_day_feature[-1, C] != label[last_pos - 9, DAY_CLOSE]:
-                shift = label[last_pos - 9, DAY_CLOSE] - cur_day_feature[-1, C]
-                for col in O, H, L, C, P:
-                    cur_day_feature[:, col] = cur_day_feature[:, col] + shift
             sep = [[2] * (len(feature_col))]
             start = [[3] * (len(feature_col))]
             cur_feature = start + cur_day_feature.tolist() + sep + cur_min_feature
@@ -293,18 +283,18 @@ class Transformer(BaseModel):
 
             def price_shift_lt_next_day(price_shift, target_col):
                 today_buy = label[last_pos, BUY] == 1
-                buy_price = feature_min[last_pos, C] + price_shift
-                adj = label[last_pos, DAY_CLOSE] - label[last_pos + 9, DAY_PRE_CLOSE]
-                sell_price = label[last_pos + 9, target_col] - adj
+                buy_price = 1 + (feature_min[last_pos, C] + price_shift) * 0.01
+                day_close_price = label[last_pos, DAY_CLOSE] * 0.01 + 1
+                sell_price = (label[last_pos + 9, target_col] * 0.01 + 1) * day_close_price - 1
                 return int(today_buy & (buy_price < sell_price))
 
             sell = label[last_pos, SELL]
-            buy_sell_close = price_shift_lt_next_day(2, DAY_CLOSE)
-            buy_sell_open = price_shift_lt_next_day(2, DAY_OPEN)
-            buy_safe = price_shift_lt_next_day(2, DAY_MIN_CLOSE)
-            buy_safe_l = price_shift_lt_next_day(-10, DAY_MIN_CLOSE)
-            buy_gain_c2 = price_shift_lt_next_day(20, DAY_MAX_CLOSE)
-            buy_gain_c5 = price_shift_lt_next_day(50, DAY_MAX_CLOSE)
+            buy_sell_close = price_shift_lt_next_day(0.2, DAY_CLOSE)
+            buy_sell_open = price_shift_lt_next_day(0.2, DAY_OPEN)
+            buy_safe = price_shift_lt_next_day(0.2, DAY_MIN_CLOSE)
+            buy_safe_l = price_shift_lt_next_day(-0.1, DAY_MIN_CLOSE)
+            buy_gain_c2 = price_shift_lt_next_day(2, DAY_MAX_CLOSE)
+            buy_gain_c5 = price_shift_lt_next_day(5, DAY_MAX_CLOSE)
             cur_label = [[sell], [buy_sell_close], [buy_sell_open], [buy_safe], [buy_safe_l], [buy_gain_c2],
                          [buy_gain_c5]]
             if self.is_pre_train:
@@ -394,3 +384,52 @@ class Transformer(BaseModel):
     def predict(x):
         model = load_model("model/model")
         model.predict(x)
+
+    @staticmethod
+    def transform_feature(df, param):
+        index = 4  # 0:NA, 1 MASK, 2:SEP, 3:START
+        price_labels = np.arange(index, index + len(param['price_bounds']) - 1)
+        for c in ['open', 'high', 'low', 'close']:
+            df[c[0]] = (df[c] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
+            df[c[0]] = np.array(pd.cut(c[0], param['price_bounds'], labels=price_labels)).astype(np.int16)
+            if param['is_min']:
+                df['d' + c[0]] = (df['day_' + c] - df['day_pre_close']) / (df['day_pre_close'] + 1e-15)
+        if param['is_min']:  # for  label generating
+            df['do'] = (df['day_open'] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
+            df['dc'] = (df['day_close'] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
+            df['d_min'] = (df['day_min_close'] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
+            df['d_max'] = (df['day_max_close'] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
+
+        index = index + len(param['price_bounds'])
+        df['w'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.dayofweek
+        df['w'] = df['w'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 7
+        # month day
+        df['md'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.day
+        df['md'] = df['md'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 31
+        # month
+        df['m'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.month
+        df['m'] = df['m'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 13
+        # vol
+        vol_labels = np.arange(index + 1, index + len(param['vol_bounds']))
+        df['v'] = np.array(pd.cut(df['vol'], param['vol_bounds'], labels=vol_labels)).astype(np.int16)
+        df['v'].fillna(index, inplace=True)
+        index = index + len(param['vol_bounds']) + 1
+
+        if param['is_min']:
+            df['t'] = np.array(pd.cut(df.trade_time.apply(lambda x: int("".join(x.split(" ")[1].split(":"))) / 100),
+                                      param['time_bounds'],
+                                      labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(
+                np.int16)
+        else:
+
+            df['t'] = index + len(param['time_bounds']) - 1
+        index = index + len(param['time_bounds'])
+        logging.info(f"stock_start_index:{index}")
+        df['s'] = df.ts_code.map(param['stock_code_mapping'])
+        df['s'] = index + df['s'].apply(lambda x: x + index)
+        logging.info(f"max_index:{np.max(df['s'])}")
+        df.fillna(0, inplace=True)
+        return df

@@ -1,8 +1,10 @@
 import logging
 import pandas as pd
+from cores.transformer_pct import TransformerPct
 from cores.transformer import Transformer
 import tensorflow as tf
 import os
+import argparse
 
 # 指定第一块gpu可用
 os.environ["cuda_visible_devices"] = "0"  # 指定gpu的第二种方法
@@ -12,6 +14,16 @@ tf.config.experimental.set_memory_growth(phy_gpu[0], True)
 logic_gpu = tf.config.list_logical_devices(['GPU'])
 print(phy_gpu, logic_gpu)
 
+def killall():
+    import os
+    cmdout = os.popen("ps aux | grep 'python main.py'").read()
+    pid = [[c for c in s.split(" ") if c != ''][1] for s in cmdout.split("\n")[0:-1]]
+    pid_list = " ".join(pid)
+    try:
+        print(os.popen(f"kill -9 {pid_list}").read())
+    except:
+        print(f"kill pid:{pid_list} error")
+
 if __name__ == '__main__':
     logging.basicConfig(level="INFO")
     logging.info("start")
@@ -19,13 +31,19 @@ if __name__ == '__main__':
     pd.set_option('display.max_columns', 30)
     # 显示所有行
     pd.set_option('display.max_rows', 100)  # 最多显示100行
-    transformer = Transformer()
-    data_min = transformer.load_min_data(years=13)
-    print(data_min.head(3))
-    data_day = transformer.load_data(years=13)
-    print(data_day.head(3))
-    transformer.build()
-    transformer.pre_train(data_min, data_day, epochs=1, workers=8)
-    transformer.train(data_min, data_day, epochs=1, workers=8)
 
-    # model.save("model")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m", "--mode", help="price/pct", default="pct")
+    parser.add_argument("-p", "--pre", help="price/pct", action="store_true")
+    args = parser.parse_args()
+    if args.mode == "pct":
+        transformer = TransformerPct()
+    else:
+        transformer = Transformer()
+    transformer.build()
+    if args.pre:
+        transformer.pre_train(years=13, epochs=1, workers=15)
+    transformer.train(years=13, epochs=1, workers=15)
+    logging.info("Done")
+    killall()
+

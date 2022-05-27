@@ -8,6 +8,7 @@
 6. 加入位置编码有用吗？
 7. 分钟数据跳掉 有需要复权的。
 8. 日线数据复权有意义吗？ 是日期接续还是重叠好。
+9. encoder 加正则化， 输出层正则化减少?
 
 # 优化日记:
 1. 20220504 先训练5年，按年迭代训练验证，即前一年训练，后一年用来验证，滚动进行 
@@ -134,7 +135,32 @@
    MEAN   ,      : loss: 0.6299 - auc: 0.7081 - val_loss: 0.5867 - val_auc: 0.6978 
    从3年验证集看，效果明显提升。 
 
-
+12. 20220522 无预训练，价格采用百分比，修正样本生成错误（7%的样本重复了15遍）。 8年训练，5year iter evaluate
+   ROUND 0, 5YEAR: loss: 1.1605 - auc: 0.6597 - val_loss: 0.5791 - val_auc: 0.6958
+   ROUND 1, 1YEAR: loss: 0.5831 - auc: 0.6893 - val_loss: 0.5779 - val_auc: 0.7042
+   ROUND 2, 1YEAR: loss: 0.5813 - auc: 0.6986 - val_loss: 0.5777 - val_auc: 0.7022
+   ROUND 3, 1YEAR: loss: 0.5803 - auc: 0.6959 - val_loss: 0.5902 - val_auc: 0.6937
+   ROUND 4, 1YEAR: loss: 0.5882 - auc: 0.6909 - val_loss: 0.5887 - val_auc: 0.6941
+   MEAN   ,      : loss: 0.6987 - auc: 0.6869 - val_loss: 0.5827 - val_auc: 0.6980 
+    效果提升 ↑， 泛华良好
+    
+13. 20220524 无预训练，价格采用原价，其余同12
+   ROUND 0, 5YEAR: loss: 1.1494 - auc: 0.6743 - val_loss: 0.5764 - val_auc: 0.6951
+   ROUND 1, 1YEAR: loss: 0.5767 - auc: 0.6947 - val_loss: 0.5757 - val_auc: 0.7023
+   ROUND 2, 1YEAR: loss: 0.5751 - auc: 0.7033 - val_loss: 0.5754 - val_auc: 0.7026
+   ROUND 3, 1YEAR: loss: 0.5743 - auc: 0.7009 - val_loss: 0.5859 - val_auc: 0.6909
+   ROUND 4, 1YEAR: loss: 0.5823 - auc: 0.6963 - val_loss: 0.5856 - val_auc: 0.6937
+   MEAN   ,      : loss: 0.6916 - auc: 0.6939 - val_loss: 0.5798 - val_auc: 0.6969
+    效果提升和价格采用百分比差不多，效果略差。
+    
+14. 20220526 无预训练，价格采用pct，取消错误的复权处理
+   ROUND 0, 5YEAR: loss: 1.1579 - auc: 0.6654 - val_loss: 0.5818 - val_auc: 0.6966
+   ROUND 1, 1YEAR: loss: 0.5877 - auc: 0.6847 - val_loss: 0.5833 - val_auc: 0.7052
+   ROUND 2, 1YEAR: loss: 0.5861 - auc: 0.6944 - val_loss: 0.5807 - val_auc: 0.7046
+   ROUND 3, 1YEAR: loss: 0.5840 - auc: 0.6925 - val_loss: 0.5911 - val_auc: 0.6928
+   ROUND 4, 1YEAR: loss: 0.5920 - auc: 0.6856 - val_loss: 0.5908 - val_auc: 0.6949
+   MEAN   ,      : loss: 0.7015 - auc: 0.6845 - val_loss: 0.5855 - val_auc: 0.6988 
+    修正后有微弱的提升，不显著。
 
 # api 实时K线接口：
 1. 新浪：

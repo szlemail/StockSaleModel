@@ -27,7 +27,7 @@ class BaseModel(object):
         self.stock_index_list = ['399001.SZ', '399006.SZ', '000001.SH']
         self.price_bounds = self.get_discrete_bounds(5000, round_number=2)
         self.price_bounds.reverse()
-        self.vol_bounds = self.get_discrete_bounds(5000000000, decay=0.995, round_number=0)
+        self.vol_bounds = self.get_discrete_bounds(5000000000, decay=0.995, round_number=0) + [-1]
         self.vol_bounds.reverse()
         self.time_bounds = [925, 955, 1025, 1055, 1125, 1155, 1325, 1355, 1425, 1455, 1525]
         self.stock_code_list = np.array([s.strip(".csv") for s in os.listdir(self.origin_data_path)])
@@ -211,13 +211,13 @@ class BaseModel(object):
         raise NotImplementedError("make_model method must implemented")
 
     @abstractmethod
-    def feature_generator(self, df_min, df_day, seq_len, last_only=False):
+    def feature_generator(self, df_min, df_day, seq_len, n_round, last_only=False, is_train=True):
         raise NotImplementedError("make_model method must implemented")
 
     def batch_feature_generator(self, tdf_min, tdf, last_only=False):
         features, labels = [], []
         while True:
-            for f, l in self.feature_generator(tdf, self.seq_len):
+            for f, l in self.feature_generator(tdf, self.seq_len, is_train=True):
                 features.append(f)
                 labels.append(l)
                 if len(features) >= self.batch_size:
@@ -227,4 +227,5 @@ class BaseModel(object):
     def get_steps(self, tdf):
         size = len(tdf)
         stock_count = len(np.unique(tdf.ts_code))
+        print(size, stock_count, stock_count * (self.seq_len * 10 + 18), self.batch_size)
         return int((size - stock_count * (self.seq_len * 10 + 18)) / self.batch_size)
