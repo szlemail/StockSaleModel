@@ -34,7 +34,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--mode", help="price/pct", default="pct")
-    parser.add_argument("-p", "--pre", help="price/pct", action="store_true")
+    parser.add_argument("-p", "--pre", help="pretrain", action="store_true")
+    parser.add_argument("-l", "--loadpre", help="load", action="store_true")
     args = parser.parse_args()
     if args.mode == "pct":
         transformer = TransformerPct()
@@ -43,7 +44,10 @@ if __name__ == '__main__':
     transformer.build()
     if args.pre:
         transformer.pre_train(years=13, epochs=1, workers=15)
-    transformer.train(years=13, epochs=1, workers=15)
+    else:
+        if args.loadpre:
+            transformer.load_middel_model()
+        transformer.train(years=13, epochs=1, workers=15)
     logging.info("Done")
     killall()
 

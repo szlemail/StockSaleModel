@@ -162,6 +162,16 @@
    MEAN   ,      : loss: 0.7015 - auc: 0.6845 - val_loss: 0.5855 - val_auc: 0.6988 
     修正后有微弱的提升，不显著。
 
+
+15. 20220528 预训练500 day
+   ROUND 0, 5YEAR: loss: 1.1394 - auc: 0.6952 - val_loss: 0.5766 - val_auc: 0.6980
+   ROUND 1, 1YEAR: loss: 0.5771 - auc: 0.6952 - val_loss: 0.5764 - val_auc: 0.7055
+   ROUND 2, 1YEAR: loss: 0.5757 - auc: 0.7049 - val_loss: 0.5741 - val_auc: 0.7063
+   ROUND 3, 1YEAR: loss: 0.5738 - auc: 0.7040 - val_loss: 0.5848 - val_auc: 0.6946
+   ROUND 4, 1YEAR: loss: 0.5819 - auc: 0.6982 - val_loss: 0.5853 - val_auc: 0.6962
+   MEAN   ,      : loss: 0.6896 - auc: 0.6995 - val_loss: 0.5794 - val_auc: 0.7001 
+    预训练有微弱提升 ↑
+    
 # api 实时K线接口：
 1. 新浪：
 https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData?symbol=sh000300&scale=30&ma=no&datalen=250

@@ -65,9 +65,12 @@ class TransformerPct(BaseModel):
         low = layers.Dense(1, activation='sigmoid')(gather_vector)
         close = layers.Dense(1, activation='sigmoid')(gather_vector)
         pool = layers.Lambda(lambda x: x[:, 0, :])(vectors)
-        is_next = layers.Dense(1, activation='sigmoid', name='next',kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001) )(pool)
-        stock = layers.Dense(len(self.stock_code_list), activation='softmax', name='stock',kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001) )(pool)
-        market = layers.Dense(5, activation='softmax', name='market',kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001) )(pool)
+        is_next = layers.Dense(1, activation='sigmoid', name='next',
+                               kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001))(pool)
+        stock = layers.Dense(len(self.stock_code_list), activation='softmax', name='stock',
+                             kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001))(pool)
+        market = layers.Dense(5, activation='softmax', name='market',
+                              kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001))(pool)
         pre_model = Model(middle_model.inputs + [position],
                           [lopen, high, low, close, is_next, stock, market],
                           name='pre_model')
@@ -162,7 +165,7 @@ class TransformerPct(BaseModel):
                     if len(f0) >= self.batch_size:
                         yield [np.array(f0), np.array(f1)], [np.array(l0), np.array(l1), np.array(l2), np.array(l3),
                                                              np.array(l4), np.array(l5), np.array(l6)]
-                        f0, f1, l0, l1, l2, l3, l4, l5, l6= [], [], [], [], [], [], [], [], []
+                        f0, f1, l0, l1, l2, l3, l4, l5, l6 = [], [], [], [], [], [], [], [], []
                 n_round += 1
         else:
             features, l0, l1, l2, l3, l4, l5, l6 = [], [], [], [], [], [], [], []
@@ -327,7 +330,7 @@ class TransformerPct(BaseModel):
 
     def pre_train(self, years, epochs, workers=8):
         self.is_pre_train = True
-        data_set = self.get_train_val_by_year(years, init_start_days=2000)
+        data_set = self.get_train_val_by_year(years, init_start_days=500)
         for train_min, train_day, val_min, val_day in data_set:
             train_steps = self.get_steps(train_min)
             val_steps = self.get_steps(val_min)
@@ -342,14 +345,19 @@ class TransformerPct(BaseModel):
                                validation_steps=val_steps,
                                workers=workers,
                                use_multiprocessing=True)
-            model_name = f"pre_model_{datetime.now().strftime('%Y%m%d')}"
-            self.pre_model.save(f"model/{model_name}")
+            model_name = f"middle_model_{datetime.now().strftime('%Y%m%d')}"
+            self.middle_model.save(f"model/{model_name}")
             del train_min, train_day, train_steps, val_steps
             train_gen.close()
             val_gen.close()
             break
         data_set.close()
         gc.collect()
+
+    def load_middel_model(self):
+        model_name = f"middle_model_{datetime.now().strftime('%Y%m%d')}"
+        logging.info(f"loading {model_name}")
+        self.middle_model = load_model(f"model/{model_name}")
 
     def train(self, years, epochs, workers=8):
         self.is_pre_train = False
@@ -421,8 +429,7 @@ class TransformerPct(BaseModel):
         if param['is_min']:
             df['t'] = np.array(pd.cut(df.trade_time.apply(lambda x: int("".join(x.split(" ")[1].split(":"))) / 100),
                                       param['time_bounds'],
-                                      labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(
-                np.int16)
+                                      labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(np.int16)
         else:
 
             df['t'] = index + len(param['time_bounds']) - 1
