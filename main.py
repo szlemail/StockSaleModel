@@ -14,6 +14,7 @@ tf.config.experimental.set_memory_growth(phy_gpu[0], True)
 logic_gpu = tf.config.list_logical_devices(['GPU'])
 print(phy_gpu, logic_gpu)
 
+
 def killall():
     import os
     cmdout = os.popen("ps aux | grep 'python main.py'").read()
@@ -23,6 +24,7 @@ def killall():
         print(os.popen(f"kill -9 {pid_list}").read())
     except:
         print(f"kill pid:{pid_list} error")
+
 
 if __name__ == '__main__':
     logging.basicConfig(level="INFO")
@@ -34,8 +36,9 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-m", "--mode", help="price/pct", default="pct")
+    parser.add_argument("-d", "--pre-train-days", help="pre-train-days", default=1750, type=int)
     parser.add_argument("-p", "--pre", help="pretrain", action="store_true")
-    parser.add_argument("-l", "--loadpre", help="load", action="store_true")
+    parser.add_argument("-n", "--pre-model-name", help="pre-model-name", default=None)
     args = parser.parse_args()
     if args.mode == "pct":
         transformer = TransformerPct()
@@ -43,11 +46,10 @@ if __name__ == '__main__':
         transformer = Transformer()
     transformer.build()
     if args.pre:
-        transformer.pre_train(years=13, epochs=1, workers=15)
+        transformer.pre_train(years=13, epochs=1, workers=15, pre_train_days=args.pre_train_days)
     else:
-        if args.loadpre:
-            transformer.load_middel_model()
+        if args.pre_model_name:
+            transformer.load_middel_model(args.pre_model_name)
         transformer.train(years=13, epochs=1, workers=15)
     logging.info("Done")
     killall()
-

@@ -172,6 +172,20 @@
    MEAN   ,      : loss: 0.6896 - auc: 0.6995 - val_loss: 0.5794 - val_auc: 0.7001 
     预训练有微弱提升 ↑
     
+16. 20220603 预训练2000 day
+   ROUND 0, 5YEAR: loss: 1.1579 - auc: 0.6637 - val_loss: 0.5846 - val_auc: 0.6964
+   ROUND 1, 1YEAR: loss: 0.5842 - auc: 0.6907 - val_loss: 0.5804 - val_auc: 0.7063
+   ROUND 2, 1YEAR: loss: 0.5815 - auc: 0.7022 - val_loss: 0.5775 - val_auc: 0.7053
+   ROUND 3, 1YEAR: loss: 0.5794 - auc: 0.7029 - val_loss: 0.5914 - val_auc: 0.6889
+   MEAN   ,      : loss: 0.7258 - auc: 0.6899 - val_loss: 0.5835 - val_auc: 0.6992
+
+17. 20220603 无预训练
+    ROUND 0, 5YEAR: loss: 1.1406 - auc: 0.6897 - val_loss: 0.5843 - val_auc: 0.6959
+    ROUND 1, 1YEAR: loss: 0.5845 - auc: 0.6877 - val_loss: 0.5805 - val_auc: 0.7002
+    ROUND 2, 1YEAR: loss: 0.5829 - auc: 0.6963 - val_loss: 0.5798 - val_auc: 0.6993
+    ROUND 3, 1YEAR: loss: 0.5808 - auc: 0.6945 - val_loss: 0.5911 - val_auc: 0.6905
+    ROUND 4, 1YEAR: loss: 0.5890 - auc: 0.6890 - val_loss: 0.5883 - val_auc: 0.6944
+    MEAN   ,      : loss: 0.6956 - auc: 0.6914 - val_loss: 0.5848 - val_auc: 0.6961
 # api 实时K线接口：
 1. 新浪：
 https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData?symbol=sh000300&scale=30&ma=no&datalen=250

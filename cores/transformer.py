@@ -1,6 +1,8 @@
 import gc
 import random
 from datetime import datetime
+
+import pandas as pd
 import tensorflow as tf
 from keras import layers, Model, regularizers
 from keras.models import load_model
@@ -65,7 +67,7 @@ class Transformer(BaseModel):
         vol = layers.Dense(1, activation='sigmoid')(gather_vector)
         pool = layers.Lambda(lambda x: x[:, 0, :])(vectors)
         is_next = layers.Dense(1, activation='sigmoid', name='next')(pool)
-        stock = layers.Dense(len(self.stock_code_list), activation='softmax', name='stock')(pool)
+        stock = layers.Dense(len(self.stock_code_list) + 1, activation='softmax', name='stock')(pool)
         market = layers.Dense(5, activation='softmax', name='market')(pool)
         pre_model = Model(middle_model.inputs + [position],
                           [open, high, low, close, pre_close, vol, is_next, stock, market],
@@ -142,6 +144,56 @@ class Transformer(BaseModel):
         gate_bases = [gate_base(g, experts) for g in gates]
         out = [tower(gb, target_names[i], dim=tower_dim, activation=activaton) for i, gb in enumerate(gate_bases)]
         return out
+
+    @classmethod
+    def transform_feature(cls, df, param):
+        index = 4  # 0:NA, 1 MASK, 2:SEP, 3:START
+        price_labels = np.arange(index, index + len(param['price_bounds']) - 1)
+        df['o'] = np.array(pd.cut(df['open'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        df['h'] = np.array(pd.cut(df['high'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        df['l'] = np.array(pd.cut(df['low'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        df['c'] = np.array(pd.cut(df['close'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        df['p'] = np.array(pd.cut(df['pre_close'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+        if param['is_min']:
+            df['do'] = np.array(pd.cut(df['day_open'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+            df['dc'] = np.array(pd.cut(df['day_close'], param['price_bounds'], labels=price_labels)).astype(np.int16)
+            df['dp'] = np.array(pd.cut(df['day_pre_close'], param['price_bounds'], labels=price_labels)).astype(
+                np.int16)
+            df['d_min'] = np.array(pd.cut(df['day_min_close'], param['price_bounds'], labels=price_labels)).astype(
+                np.int16)
+            df['d_max'] = np.array(pd.cut(df['day_max_close'], param['price_bounds'], labels=price_labels)).astype(
+                np.int16)
+        index = index + len(param['price_bounds'])
+
+        df['w'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.dayofweek
+        df['w'] = df['w'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 7
+        # month day
+        df['md'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.day
+        df['md'] = df['md'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 31
+        # month
+        df['m'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.month
+        df['m'] = df['m'].apply(lambda x: x + index).astype(np.int16)
+        index = index + 13
+        # vol
+        vol_labels = np.arange(index + 1, index + len(param['vol_bounds']))
+        df['v'] = np.array(pd.cut(df['vol'], param['vol_bounds'], labels=vol_labels)).astype(np.int16)
+        df['v'].fillna(index, inplace=True)
+        index = index + len(param['vol_bounds']) + 1
+
+        if param['is_min']:
+            df['t'] = np.array(pd.cut(df.trade_time.apply(lambda x: int("".join(x.split(" ")[1].split(":"))) / 100),
+                                      param['time_bounds'],
+                                      labels=np.arange(index, index + len(param['time_bounds']) - 1))).astype(np.int16)
+        else:
+
+            df['t'] = index + len(param['time_bounds']) - 1
+        index = index + len(param['time_bounds'])
+        df['s'] = df.ts_code.map(param['stock_code_mapping'])
+        df['s'] = index + df['s'].apply(lambda x: x + index)
+        df.fillna(0, inplace=True)
+        return df
 
     def batch_feature_generator(self, tdf_min, tdf, last_only=False, is_train=True):
         n_round = 1
@@ -335,10 +387,14 @@ class Transformer(BaseModel):
             val_day = df_day[(df_day.trade_date > dates[val_start]) & (df_day.trade_date < dates[val_end])]
             yield train_min, train_day, val_min, val_day
 
-    def pre_train(self, years, epochs, workers=8):
+    def pre_train(self, years, epochs, workers=8, pre_train_days=2000):
         self.is_pre_train = True
-        data_set = self.get_train_val_by_year(years, init_start_days=2000)
+        data_set = self.get_train_val_by_year(years, init_start_days=pre_train_days)
+        i = 0
         for train_min, train_day, val_min, val_day in data_set:
+            i += 1
+            if i != 2 and i != 3:
+                continue
             train_steps = self.get_steps(train_min)
             val_steps = self.get_steps(val_min)
             train_gen = self.batch_feature_generator(train_min, train_day)

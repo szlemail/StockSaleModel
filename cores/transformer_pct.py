@@ -26,11 +26,12 @@ class TransformerPct(BaseModel):
         self.feature_size = 7
         positive_price_bounds = self.get_discrete_bounds(max_value=20, min_value=0.01, round_number=2, decay=0.99)
         self.price_bounds = sorted(
-            positive_price_bounds + [-n for n in positive_price_bounds] + [100, 20.1, -20.1, -100])
+            positive_price_bounds + [-n for n in positive_price_bounds] + [10000, 1000, 500, 100, 50, 20.1, -20.1, -50, -100])
         self.manager = Manager()
         self.lock = Lock()
         self.train_visited = self.manager.dict()
         self.val_visited = self.manager.dict()
+        self.debug_data = False
 
     def make_pre_model(self):
         # base model
@@ -60,14 +61,14 @@ class TransformerPct(BaseModel):
         vectors = middle_model(middle_model.inputs)
         position = layers.Input(shape=(mask_size, 1), dtype=tf.int32)
         gather_vector = layers.Lambda(lambda x: tf.gather_nd(x[0], x[1], batch_dims=1))([vectors, position])
-        lopen = layers.Dense(1, activation='sigmoid')(gather_vector)
-        high = layers.Dense(1, activation='sigmoid')(gather_vector)
-        low = layers.Dense(1, activation='sigmoid')(gather_vector)
-        close = layers.Dense(1, activation='sigmoid')(gather_vector)
+        lopen = layers.Dense(1, activation='sigmoid', name='o')(gather_vector)
+        high = layers.Dense(1, activation='sigmoid', name='h')(gather_vector)
+        low = layers.Dense(1, activation='sigmoid', name='l')(gather_vector)
+        close = layers.Dense(1, activation='sigmoid', name='c')(gather_vector)
         pool = layers.Lambda(lambda x: x[:, 0, :])(vectors)
         is_next = layers.Dense(1, activation='sigmoid', name='next',
                                kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001))(pool)
-        stock = layers.Dense(len(self.stock_code_list), activation='softmax', name='stock',
+        stock = layers.Dense(len(self.stock_code_list) + 1, activation='softmax', name='stock',
                              kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001))(pool)
         market = layers.Dense(5, activation='softmax', name='market',
                               kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001))(pool)
@@ -195,7 +196,7 @@ class TransformerPct(BaseModel):
         :param last_only 是否只生成收盘时刻样本
         :return:
         """
-        min_cols = "o,h,l,c,v,t,md,w,m,s,sell,buy,close_t,do,dc,dp,d_min,d_max,trade_date".split(",")
+        min_cols = "o,h,l,c,v,t,md,w,m,s,sell,buy,close_t,do,dc,d_min,d_max,trade_date".split(",")
         cols = "o,h,l,c,v,t,md,w,m,s,trade_date".split(",")
         for ts_code in np.unique(df_min.ts_code):
             with self.lock:
@@ -214,6 +215,9 @@ class TransformerPct(BaseModel):
             if len(tdf_day) < seq_len:
                 continue
             for cur_feature, cur_label in self.__feature_generator(tdf_min, tdf_day, seq_len, last_only):
+                if self.debug_data:
+                    # logging.info(cur_feature)
+                    logging.info(cur_label + [[self.stock_code_mapping.get(ts_code)], [self.get_market(ts_code)]])
                 yield cur_feature, cur_label + [[self.stock_code_mapping.get(ts_code)], [self.get_market(ts_code)]]
             gc.collect()
 
@@ -328,9 +332,9 @@ class TransformerPct(BaseModel):
             val_day = df_day[(df_day.trade_date > dates[val_start]) & (df_day.trade_date < dates[val_end])]
             yield train_min, train_day, val_min, val_day
 
-    def pre_train(self, years, epochs, workers=8):
+    def pre_train(self, years, epochs, workers=8, pre_train_days=500):
         self.is_pre_train = True
-        data_set = self.get_train_val_by_year(years, init_start_days=500)
+        data_set = self.get_train_val_by_year(years, init_start_days=pre_train_days)
         for train_min, train_day, val_min, val_day in data_set:
             train_steps = self.get_steps(train_min)
             val_steps = self.get_steps(val_min)
@@ -354,8 +358,7 @@ class TransformerPct(BaseModel):
         data_set.close()
         gc.collect()
 
-    def load_middel_model(self):
-        model_name = f"middle_model_{datetime.now().strftime('%Y%m%d')}"
+    def load_middel_model(self, model_name):
         logging.info(f"loading {model_name}")
         self.middle_model = load_model(f"model/{model_name}")
 
@@ -393,20 +396,20 @@ class TransformerPct(BaseModel):
         model = load_model("model/model")
         model.predict(x)
 
-    @staticmethod
-    def transform_feature(df, param):
+    @classmethod
+    def transform_feature(cls, df, param):
         index = 4  # 0:NA, 1 MASK, 2:SEP, 3:START
         price_labels = np.arange(index, index + len(param['price_bounds']) - 1)
+        pre_col = 'day_pre_close' if param['is_min'] else 'pre_close'
         for c in ['open', 'high', 'low', 'close']:
-            df[c[0]] = (df[c] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
-            df[c[0]] = np.array(pd.cut(c[0], param['price_bounds'], labels=price_labels)).astype(np.int16)
-            if param['is_min']:
-                df['d' + c[0]] = (df['day_' + c] - df['day_pre_close']) / (df['day_pre_close'] + 1e-15)
+            new_col = c[0]
+            df[new_col] = (df[c] - df[pre_col]) * 100.0 / (df[pre_col] + 1e-15)
+            df[new_col] = pd.cut(df[new_col], param['price_bounds'], labels=price_labels).astype(np.int16)
         if param['is_min']:  # for  label generating
-            df['do'] = (df['day_open'] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
-            df['dc'] = (df['day_close'] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
-            df['d_min'] = (df['day_min_close'] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
-            df['d_max'] = (df['day_max_close'] - df['day_pre_close']) * 100.0 / (df['day_pre_close'] + 1e-15)
+            df['do'] = (df['day_open'] - df[pre_col]) * 100.0 / (df[pre_col] + 1e-15)
+            df['dc'] = (df['day_close'] - df[pre_col]) * 100.0 / (df[pre_col] + 1e-15)
+            df['d_min'] = (df['day_min_close'] - df[pre_col]) * 100.0 / (df[pre_col] + 1e-15)
+            df['d_max'] = (df['day_max_close'] - df[pre_col]) * 100.0 / (df[pre_col] + 1e-15)
 
         index = index + len(param['price_bounds'])
         df['w'] = pd.to_datetime(df.trade_date.apply(lambda x: "%s" % x)).dt.dayofweek
@@ -434,9 +437,7 @@ class TransformerPct(BaseModel):
 
             df['t'] = index + len(param['time_bounds']) - 1
         index = index + len(param['time_bounds'])
-        logging.info(f"stock_start_index:{index}")
         df['s'] = df.ts_code.map(param['stock_code_mapping'])
         df['s'] = index + df['s'].apply(lambda x: x + index)
-        logging.info(f"max_index:{np.max(df['s'])}")
         df.fillna(0, inplace=True)
         return df
