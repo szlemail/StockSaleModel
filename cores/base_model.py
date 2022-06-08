@@ -93,8 +93,6 @@ class BaseModel(object):
                   'trade_date': i32,
                   'ts_code': str}
         try:
-            if '688350' in filename:
-                logging.info(f"found{filename}")
             df = pd.read_csv(f"{param['origin_data_path']}/{filename}", dtype=dytpes, usecols=list(dytpes.keys()))
             df = cls.transform_day(df, param)
             return df
@@ -163,8 +161,6 @@ class BaseModel(object):
         f32, i32, i64 = np.float32, np.int32, np.int64
         dytpes = {'open': f32, 'close': f32, 'high': f32, 'low': f32, 'vol': i64, 'amount': f32, 'trade_date': i32}
         try:
-            if '000156' in filename:
-                logging.info(filename)
             df = pd.read_csv(f"{param['origin_min_data_path']}/{filename}", dtype=dytpes)
             df = cls.transform_min(df, param)
             return df

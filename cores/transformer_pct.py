@@ -10,6 +10,7 @@ import pandas as pd
 import logging
 from common.configs import config
 from multiprocessing import Manager, Lock
+from cores.layers.positon_embedding import AddPositionEmbedding
 
 
 class TransformerPct(BaseModel):
@@ -49,7 +50,8 @@ class TransformerPct(BaseModel):
         layer_in = layers.Input(shape=(self.model_seq_len, self.feature_size))
         emb = layers.Embedding(4500, self.embedding_size)
         l1 = emb(layer_in)
-        l2 = layers.Flatten()(l1)
+        add_pos = AddPositionEmbedding()(l1)
+        l2 = layers.Flatten()(add_pos)
         l2 = layers.Reshape(target_shape=(self.model_seq_len, -1))(l2)
         for i in range(3):
             l2 = encoder(l2)
@@ -61,10 +63,11 @@ class TransformerPct(BaseModel):
         vectors = middle_model(middle_model.inputs)
         position = layers.Input(shape=(mask_size, 1), dtype=tf.int32)
         gather_vector = layers.Lambda(lambda x: tf.gather_nd(x[0], x[1], batch_dims=1))([vectors, position])
-        lopen = layers.Dense(1, activation='sigmoid', name='o')(gather_vector)
-        high = layers.Dense(1, activation='sigmoid', name='h')(gather_vector)
-        low = layers.Dense(1, activation='sigmoid', name='l')(gather_vector)
-        close = layers.Dense(1, activation='sigmoid', name='c')(gather_vector)
+        reg = regularizers.l1_l2(l1=0.001, l2=0.001)
+        lopen = layers.Dense(1, activation='sigmoid', name='o', kernel_regularizer=reg)(gather_vector)
+        high = layers.Dense(1, activation='sigmoid', name='h', kernel_regularizer=reg)(gather_vector)
+        low = layers.Dense(1, activation='sigmoid', name='l', kernel_regularizer=reg)(gather_vector)
+        close = layers.Dense(1, activation='sigmoid', name='c', kernel_regularizer=reg)(gather_vector)
         pool = layers.Lambda(lambda x: x[:, 0, :])(vectors)
         is_next = layers.Dense(1, activation='sigmoid', name='next',
                                kernel_regularizer=regularizers.l1_l2(l1=0.0001, l2=0.0001))(pool)
